@@ -1,0 +1,33 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import csrf with context %}
+{% block title %}Administradores{% endblock %}
+{% block content %}
+<h1>Administradores</h1>
+<div class="table-wrap"><table>
+  <thead><tr><th>#</th><th>Usuário</th><th>E-mail</th><th>Perfil</th><th>Último login</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for a in admins %}
+    <tr class="{{ 'muted' if not a.is_active }}">
+      <td>{{ a.id }}</td><td>{{ a.username }}</td><td>{{ a.email or '—' }}</td>
+      <td>{{ 'Superusuário' if a.is_superuser else 'Operador' }}</td>
+      <td>{{ a.last_login_at|dt }}</td>
+      <td>{% if a.is_active %}<span class="tag tag-active">ativo</span>{% else %}<span class="tag tag-cancelled">inativo</span>{% endif %}</td>
+      <td>{% if a.id != admin.id %}<form method="post" action="/admin/admins/{{ a.id }}/toggle" class="inline">{{ csrf() }}
+        <button class="btn small {{ 'danger' if a.is_active }}">{{ 'Desativar' if a.is_active else 'Ativar' }}</button></form>{% endif %}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+
+<h2>Novo administrador</h2>
+<form method="post" action="/admin/admins/create" class="form card">{{ csrf() }}
+  <div class="grid2">
+    <label>Usuário* <input name="username" required maxlength="64" pattern="[a-zA-Z0-9_.\-]{3,64}"></label>
+    <label>E-mail <input name="email" type="email" maxlength="255"></label>
+    <label>Senha* (mín. 10 caracteres, letras e números) <input name="password" type="password" required minlength="10" autocomplete="new-password"></label>
+  </div>
+  <label class="check-line"><input type="checkbox" name="is_superuser" value="1"> Superusuário (pode gerenciar planos, preços, conteúdos e admins)</label>
+  <div class="actions"><button class="btn">Criar</button></div>
+</form>
+<p class="hint"><b>Operador:</b> consulta tudo, bloqueia usuários e encerra acessos. <b>Superusuário:</b> também gerencia ofertas, conteúdos e administradores.</p>
+{% endblock %}

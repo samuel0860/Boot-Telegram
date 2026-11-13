@@ -1,0 +1,32 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import csrf with context %}
+{% block title %}Planos{% endblock %}
+{% block content %}
+<div class="head">
+  <h1>Planos e ofertas</h1>
+  {% if admin.is_superuser %}<a class="btn" href="/admin/plans/new">+ Novo plano</a>{% endif %}
+</div>
+<div class="table-wrap"><table>
+  <thead><tr><th>Ordem</th><th>Nome</th><th>Preço</th><th>Tipo</th><th>Duração</th><th>Conteúdos</th><th>Vendas</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for p in plans %}
+    <tr class="{{ 'muted' if not p.is_active }}">
+      <td>{{ p.sort_order }}</td>
+      <td><b>{{ p.name }}</b><br><small>{{ p.slug }}</small></td>
+      <td>{{ p.price|brl }}</td>
+      <td>{{ 'Pack (único)' if p.access_type.value == 'one_time' else 'Assinatura' }}</td>
+      <td>{{ p.duration_label }}</td>
+      <td>{% for prod in p.products %}<span class="chip small {{ 'off' if not prod.is_active }}">{{ prod.name }}</span>{% else %}<span class="err">nenhum</span>{% endfor %}</td>
+      <td>{{ sold.get(p.id, 0) }}</td>
+      <td>{% if p.is_active %}<span class="tag tag-active">ativo</span>{% else %}<span class="tag tag-cancelled">inativo</span>{% endif %}</td>
+      <td class="actions">{% if admin.is_superuser %}
+        <a class="btn small ghost" href="/admin/plans/{{ p.id }}/edit">Editar</a>
+        <form method="post" action="/admin/plans/{{ p.id }}/toggle" class="inline">{{ csrf() }}
+          <button class="btn small {{ 'danger' if p.is_active }}">{{ 'Desativar' if p.is_active else 'Ativar' }}</button></form>
+      {% endif %}</td>
+    </tr>
+  {% else %}<tr><td colspan="9" class="empty">Nenhum plano. Rode <code>python manage.py seed</code> ou crie um novo.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+<p class="hint">Alterar o preço não afeta pedidos já criados (o valor é registrado no pedido). Planos não são excluídos para preservar o histórico — desative-os.</p>
+{% endblock %}

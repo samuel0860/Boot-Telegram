@@ -1,0 +1,16 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import csrf with context %}
+{% block title %}Minha conta{% endblock %}
+{% block content %}
+<h1>Minha conta</h1>
+<div class="card">
+  <p><b>Usuário:</b> {{ admin.username }} · <b>Perfil:</b> {{ 'Superusuário' if admin.is_superuser else 'Operador' }}</p>
+  <p><b>Último login:</b> {{ admin.last_login_at|dt }}</p>
+</div>
+<h2>Alterar senha</h2>
+<form method="post" action="/admin/password" class="form card">{{ csrf() }}
+  <label>Senha atual <input name="current_password" type="password" required autocomplete="current-password"></label>
+  <label>Nova senha (mín. 10 caracteres) <input name="new_password" type="password" required minlength="10" autocomplete="new-password"></label>
+  <div class="actions"><button class="btn">Alterar senha</button></div>
+</form>
+{% endblock %}

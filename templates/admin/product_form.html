@@ -1,0 +1,38 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import csrf with context %}
+{% block title %}{{ 'Editar' if product else 'Novo' }} conteúdo{% endblock %}
+{% block content %}
+<h1>{{ 'Editar: ' ~ product.name if product else 'Novo conteúdo' }}</h1>
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+<form method="post" action="/admin/products/save" class="form card">
+  {{ csrf() }}
+  <input type="hidden" name="product_id" value="{{ product.id if product else '' }}">
+  <div class="grid2">
+    <label>Nome* <input name="name" value="{{ form.name }}" required maxlength="150"></label>
+    <label>Slug <input name="slug" value="{{ form.slug }}" maxlength="100" placeholder="gerado a partir do nome"></label>
+    <label>Categoria
+      <select name="category_id">
+        <option value="">— sem categoria —</option>
+        {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if form.category_id == c.id|string }}>{{ c.name }}</option>{% endfor %}
+      </select>
+    </label>
+    <label>Ordem <input name="sort_order" value="{{ form.sort_order }}" inputmode="numeric"></label>
+    <label>Tipo de conteúdo*
+      <select name="content_type">
+        {% set labels = {'telegram_chat': 'Grupo/canal privado do Telegram', 'link': 'Link externo (https)', 'file': 'Arquivo (file_id)', 'photo': 'Foto (file_id)', 'video': 'Vídeo (file_id)', 'text': 'Texto'} %}
+        {% for t in content_types %}<option value="{{ t }}" {{ 'selected' if form.content_type == t }}>{{ labels.get(t, t) }}</option>{% endfor %}
+      </select>
+    </label>
+  </div>
+  <label>Descrição pública (aparece em "Ver conteúdo disponível") <textarea name="description" rows="2" maxlength="2000">{{ form.description }}</textarea></label>
+  <label>Conteúdo privado* (entregue somente após pagamento)
+    <textarea name="content_value" rows="4" required maxlength="4000">{{ form.content_value }}</textarea></label>
+  <p class="hint">
+    <b>Grupo/canal:</b> ID numérico (ex.: <code>-1001234567890</code>) — adicione o bot como administrador com permissão de convidar e banir; envie <code>/chatid</code> no grupo para obter o ID.<br>
+    <b>Arquivo/foto/vídeo:</b> envie o arquivo ao bot pelo seu Telegram (ID em ADMIN_TELEGRAM_IDS) para receber o <code>file_id</code>.<br>
+    <b>Link:</b> URL https. <b>Texto:</b> mensagem enviada ao comprador.
+  </p>
+  <label class="check-line"><input type="checkbox" name="is_active" value="1" {{ 'checked' if form.is_active }}> Ativo</label>
+  <div class="actions"><button class="btn">Salvar</button> <a class="btn ghost" href="/admin/products">Cancelar</a></div>
+</form>
+{% endblock %}

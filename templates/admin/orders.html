@@ -1,0 +1,27 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import pagination, status as tag, filters with context %}
+{% block title %}Pedidos{% endblock %}
+{% block content %}
+<h1>Pedidos</h1>
+{{ filters('/admin/orders', status, statuses) }}
+<div class="table-wrap"><table>
+  <thead><tr><th>#</th><th>Código</th><th>Usuário</th><th>Plano</th><th>Valor</th><th>Status</th><th>Criado</th><th>Pago</th><th>Entrega</th></tr></thead>
+  <tbody>
+  {% for o in orders %}
+    <tr>
+      <td>{{ o.id }}</td>
+      <td><code>{{ (o.public_id|string)[:8] }}</code></td>
+      <td><a href="/admin/users/{{ o.user_id }}">{{ o.user.display_name }}</a></td>
+      <td>{{ o.plan.name }}</td>
+      <td>{{ o.amount|brl }}</td>
+      <td>{{ tag(o.status.value) }}</td>
+      <td>{{ o.created_at|dt }}</td>
+      <td>{{ o.paid_at|dt }}</td>
+      <td>{% if o.delivered_at %}{{ o.delivered_at|dt }}{% elif o.status.value == 'paid' %}<span class="tag tag-pending">aguardando ({{ o.delivery_attempts }})</span>{% else %}—{% endif %}
+        {% if o.delivery_error %}<br><span class="err">{{ o.delivery_error }}</span>{% endif %}</td>
+    </tr>
+  {% else %}<tr><td colspan="9" class="empty">Nenhum pedido.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{{ pagination(pager, '/admin/orders?status=' ~ status) }}
+{% endblock %}

@@ -1,0 +1,29 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import csrf with context %}
+{% block title %}Conteúdos{% endblock %}
+{% block content %}
+<div class="head">
+  <h1>Conteúdos, produtos e packs</h1>
+  {% if admin.is_superuser %}<a class="btn" href="/admin/products/new">+ Novo conteúdo</a>{% endif %}
+</div>
+<div class="table-wrap"><table>
+  <thead><tr><th>Categoria</th><th>Ordem</th><th>Nome</th><th>Tipo</th><th>Planos</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for p in products %}
+    <tr class="{{ 'muted' if not p.is_active }}">
+      <td>{{ p.category.name if p.category else '—' }}</td>
+      <td>{{ p.sort_order }}</td>
+      <td><b>{{ p.name }}</b><br><small>{{ p.description or '' }}</small></td>
+      <td><code>{{ p.content_type.value }}</code></td>
+      <td>{% for pl in p.plans %}<span class="chip small">{{ pl.name }}</span>{% else %}—{% endfor %}</td>
+      <td>{% if p.is_active %}<span class="tag tag-active">ativo</span>{% else %}<span class="tag tag-cancelled">inativo</span>{% endif %}</td>
+      <td class="actions">{% if admin.is_superuser %}
+        <a class="btn small ghost" href="/admin/products/{{ p.id }}/edit">Editar</a>
+        <form method="post" action="/admin/products/{{ p.id }}/toggle" class="inline">{{ csrf() }}
+          <button class="btn small {{ 'danger' if p.is_active }}">{{ 'Desativar' if p.is_active else 'Ativar' }}</button></form>
+      {% endif %}</td>
+    </tr>
+  {% else %}<tr><td colspan="7" class="empty">Nenhum conteúdo cadastrado.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% endblock %}
