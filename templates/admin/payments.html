@@ -1,0 +1,27 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import pagination, status as tag, filters with context %}
+{% block title %}Transações{% endblock %}
+{% block content %}
+<h1>Histórico de transações</h1>
+{{ filters('/admin/payments', status, statuses) }}
+<div class="table-wrap"><table>
+  <thead><tr><th>#</th><th>Provedor / ID</th><th>Pedido</th><th>Usuário</th><th>Plano</th><th>Valor</th><th>Status</th><th>Criado</th><th>Aprovado</th></tr></thead>
+  <tbody>
+  {% for p in payments %}
+    <tr>
+      <td>{{ p.id }}</td>
+      <td>{{ p.provider }}<br><code>{{ p.provider_payment_id }}</code></td>
+      <td>#{{ p.order_id }}</td>
+      <td><a href="/admin/users/{{ p.order.user_id }}">{{ p.order.user.display_name }}</a></td>
+      <td>{{ p.order.plan.name }}</td>
+      <td>{{ p.amount|brl }}</td>
+      <td>{{ tag(p.status.value) }}{% if p.status_detail %}<br><small>{{ p.status_detail }}</small>{% endif %}
+        {% if p.validation_error %}<br><span class="err">{{ p.validation_error }}</span>{% endif %}</td>
+      <td>{{ p.created_at|dt }}</td>
+      <td>{{ p.approved_at|dt }}</td>
+    </tr>
+  {% else %}<tr><td colspan="9" class="empty">Nenhuma transação.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{{ pagination(pager, '/admin/payments?status=' ~ status) }}
+{% endblock %}

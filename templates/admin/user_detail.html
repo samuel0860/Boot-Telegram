@@ -1,0 +1,67 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import status, csrf with context %}
+{% block title %}Usuário {{ user.telegram_id }}{% endblock %}
+{% block content %}
+<h1>{{ user.display_name }}</h1>
+<div class="card grid2">
+  <div>
+    <p><b>Telegram ID:</b> {{ user.telegram_id }}</p>
+    <p><b>Username:</b> {{ '@' ~ user.username if user.username else '—' }}</p>
+    <p><b>Idioma:</b> {{ user.language_code or '—' }} · <b>Origem:</b> {{ user.source or '—' }}</p>
+    <p><b>Cadastro:</b> {{ user.created_at|dt }} · <b>Último acesso:</b> {{ user.last_seen_at|dt }}</p>
+  </div>
+  <div class="right">
+    <form method="post" action="/admin/users/{{ user.id }}/block" data-confirm="Confirmar alteração do bloqueio?">
+      {{ csrf() }}
+      {% if user.is_blocked %}
+        <input type="hidden" name="block" value="0"><button class="btn">Desbloquear usuário</button>
+      {% else %}
+        <input type="hidden" name="block" value="1"><button class="btn danger">Bloquear usuário</button>
+      {% endif %}
+    </form>
+  </div>
+</div>
+
+<h2>Acessos</h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>#</th><th>Plano</th><th>Status</th><th>Início</th><th>Vencimento</th><th>Removido dos chats</th><th></th></tr></thead>
+  <tbody>
+  {% for s in subs %}
+    <tr>
+      <td>{{ s.id }}</td><td>{{ s.plan.name }}</td><td>{{ status(s.status.value) }}</td>
+      <td>{{ s.starts_at|dt }}</td><td>{{ s.expires_at|dt if s.expires_at else 'vitalício' }}</td>
+      <td>{{ s.access_removed_at|dt }}</td>
+      <td>{% if s.status.value == 'active' %}
+        <form method="post" action="/admin/subscriptions/{{ s.id }}/revoke" data-confirm="Encerrar este acesso? O usuário será removido dos grupos/canais.">
+          {{ csrf() }}<input type="hidden" name="reason" value="encerrado pelo administrador">
+          <button class="btn small danger">Encerrar</button>
+        </form>{% endif %}</td>
+    </tr>
+  {% else %}<tr><td colspan="7" class="empty">Sem acessos.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+
+<h2>Pedidos e pagamentos</h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>#</th><th>Plano</th><th>Valor</th><th>Status</th><th>Pagamentos (provedor)</th><th>Criado</th><th>Pago</th><th>Entregue</th></tr></thead>
+  <tbody>
+  {% for o in orders %}
+    <tr>
+      <td>{{ o.id }}</td><td>{{ o.plan.name }}</td><td>{{ o.amount|brl }}</td><td>{{ status(o.status.value) }}</td>
+      <td>{% for p in o.payments %}{{ p.provider }} #{{ p.provider_payment_id }} {{ status(p.status.value) }}{% if p.validation_error %} <span class="err">{{ p.validation_error }}</span>{% endif %}<br>{% else %}—{% endfor %}</td>
+      <td>{{ o.created_at|dt }}</td><td>{{ o.paid_at|dt }}</td><td>{{ o.delivered_at|dt }}</td>
+    </tr>
+  {% else %}<tr><td colspan="8" class="empty">Sem pedidos.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+
+<h2>Histórico</h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>Data</th><th>Ação</th><th>Detalhes</th></tr></thead>
+  <tbody>
+  {% for l in logs %}
+    <tr><td>{{ l.created_at|dt }}</td><td><code>{{ l.action }}</code></td><td class="mono">{{ l.details|tojson if l.details else '' }}</td></tr>
+  {% else %}<tr><td colspan="3" class="empty">Sem registros.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% endblock %}

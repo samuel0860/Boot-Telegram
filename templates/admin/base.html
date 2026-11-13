@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{% block title %}Painel{% endblock %} · Admin</title>
+  <link rel="icon" href="/static/images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/css/admin.css">
+</head>
+<body>
+{% if admin %}
+<header class="top">
+  <a class="brand" href="/admin/">⚡ Telegram Vendas</a>
+  <nav>
+    <a href="/admin/">Dashboard</a>
+    <a href="/admin/users">Usuários</a>
+    <a href="/admin/orders">Pedidos</a>
+    <a href="/admin/payments">Transações</a>
+    <a href="/admin/subscriptions">Assinaturas</a>
+    <a href="/admin/plans">Planos</a>
+    <a href="/admin/products">Conteúdos</a>
+    <a href="/admin/categories">Categorias</a>
+    <a href="/admin/logs">Histórico</a>
+    <a href="/admin/webhooks">Webhooks</a>
+    {% if admin.is_superuser %}<a href="/admin/admins">Admins</a>{% endif %}
+  </nav>
+  <div class="me">
+    <a href="/admin/account">{{ admin.username }}</a>
+    <form method="post" action="/admin/logout" class="inline">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+      <button class="btn small ghost">Sair</button>
+    </form>
+  </div>
+</header>
+{% endif %}
+<main class="container">
+  {% for f in flashes %}<div class="flash {{ f.kind }}">{{ f.message }}</div>{% endfor %}
+  {% block content %}{% endblock %}
+</main>
+<script src="/static/js/admin.js" defer></script>
+</body>
+</html>

@@ -324,4 +324,3 @@ Cobrem: cadastro sem duplicidade, checkout e reaproveitamento de PIX, clique em 
 | `admin_users` | Administradores | username/e-mail UNIQUE, hash Argon2, bloqueio por tentativas |
 
 Todas as tabelas têm PK, FKs com integridade referencial, índices para as consultas frequentes e `created_at`/`updated_at` (`TIMESTAMPTZ`, UTC).
-# Boot-Telegram

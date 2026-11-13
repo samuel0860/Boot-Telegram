@@ -1,0 +1,112 @@
+name: telegram_vendas
+
+# Dentro do Docker, os serviços acessam o banco pelo NOME DO SERVIÇO ("postgres").
+x-app-env: &app-env
+  DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-telegram}:${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-telegram_vendas}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: telegram_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-telegram_vendas}
+      POSTGRES_USER: ${POSTGRES_USER:-telegram}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+      TZ: UTC
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    # Publicada somente em 127.0.0.1 (acesso local / ferramentas de administração).
+    # Em produção, se nada fora do Docker precisar do banco, pode remover este bloco.
+    ports:
+      - "${POSTGRES_BIND_ADDRESS:-127.0.0.1}:${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    networks: [internal]
+
+  # Aplica as migrations (alembic upgrade head) e encerra.
+  migrate:
+    build: .
+    image: telegram_vendas_app:latest
+    container_name: telegram_migrate
+    command: ["alembic", "upgrade", "head"]
+    env_file: .env
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+    networks: [internal]
+
+  backend:
+    image: telegram_vendas_app:latest
+    container_name: telegram_backend
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*", "--workers", "2"]
+    restart: unless-stopped
+    env_file: .env
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    ports:
+      - "${BACKEND_BIND_ADDRESS:-127.0.0.1}:${BACKEND_PORT:-8000}:8000"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=4)"]
+      interval: 20s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks: [internal]
+
+  telegram_bot:
+    image: telegram_vendas_app:latest
+    container_name: telegram_bot
+    command: ["python", "bot.py"]
+    restart: unless-stopped
+    env_file: .env
+    environment: *app-env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    networks: [internal]
+
+  # Proxy HTTPS opcional (certificado automático Let's Encrypt).
+  # Ative com: docker compose --profile proxy up -d
+  caddy:
+    image: caddy:2-alpine
+    container_name: telegram_caddy
+    profiles: ["proxy"]
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN:-localhost}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - backend
+    networks: [internal]
+
+volumes:
+  postgres_data:
+    name: telegram_postgres_data
+  caddy_data:
+    name: telegram_caddy_data
+  caddy_config:
+    name: telegram_caddy_config
+
+networks:
+  internal:
+    name: telegram_net

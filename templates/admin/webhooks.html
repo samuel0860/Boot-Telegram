@@ -1,0 +1,26 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import pagination, status as tag, filters with context %}
+{% block title %}Webhooks{% endblock %}
+{% block content %}
+<h1>Eventos de webhook</h1>
+{{ filters('/admin/webhooks', status, statuses) }}
+<div class="table-wrap"><table>
+  <thead><tr><th>#</th><th>Recebido</th><th>Provedor</th><th>Tipo</th><th>Recurso</th><th>Assinatura</th><th>Tentativas</th><th>Status</th><th>Resultado / erro</th></tr></thead>
+  <tbody>
+  {% for e in events %}
+    <tr>
+      <td>{{ e.id }}</td>
+      <td>{{ e.created_at|dt }}</td>
+      <td>{{ e.provider }}</td>
+      <td>{{ e.event_type or '—' }}</td>
+      <td><code>{{ e.resource_id or '—' }}</code></td>
+      <td>{{ '✅' if e.signature_valid else '❌' }}</td>
+      <td>{{ e.attempts }}</td>
+      <td>{{ tag(e.status.value) }}</td>
+      <td>{{ e.result or '' }}{% if e.error %}<span class="err">{{ e.error }}</span>{% endif %}</td>
+    </tr>
+  {% else %}<tr><td colspan="9" class="empty">Nenhum evento recebido.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{{ pagination(pager, '/admin/webhooks?status=' ~ status) }}
+{% endblock %}

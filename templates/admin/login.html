@@ -1,0 +1,14 @@
+{% extends "admin/base.html" %}
+{% block title %}Entrar{% endblock %}
+{% block content %}
+<div class="login">
+  <h1>🔐 Painel administrativo</h1>
+  {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+  <form method="post" action="/admin/login" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <label>Usuário <input name="username" required autocomplete="username" autofocus maxlength="64"></label>
+    <label>Senha <input name="password" type="password" required autocomplete="current-password" maxlength="256"></label>
+    <button class="btn">Entrar</button>
+  </form>
+</div>
+{% endblock %}

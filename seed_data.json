@@ -1,0 +1,74 @@
+{
+  "_comment": "Dados iniciais. 'python manage.py seed' cria apenas o que ainda não existe (pelo slug). Depois, edite preços e conteúdos pelo painel.",
+  "categories": [
+    {"slug": "packs", "name": "Packs", "description": "Coleções avulsas com acesso permanente.", "sort_order": 1},
+    {"slug": "vip", "name": "Área VIP", "description": "Conteúdo exclusivo para assinantes.", "sort_order": 2}
+  ],
+  "products": [
+    {
+      "slug": "pack-1",
+      "category": "packs",
+      "name": "Pack 1",
+      "description": "Coleção inicial de conteúdos.",
+      "content_type": "text",
+      "content_value": "Substitua este texto pelo conteúdo real do Pack 1 no painel (ou troque o tipo para link/arquivo).",
+      "sort_order": 1,
+      "is_active": true
+    },
+    {
+      "slug": "conteudo-semanal",
+      "category": "vip",
+      "name": "Conteúdo da semana",
+      "description": "Materiais atualizados semanalmente.",
+      "content_type": "text",
+      "content_value": "Substitua este texto pelo conteúdo/link real no painel.",
+      "sort_order": 1,
+      "is_active": true
+    },
+    {
+      "slug": "grupo-vip",
+      "category": "vip",
+      "name": "Grupo VIP no Telegram",
+      "description": "Acesso ao grupo privado enquanto a assinatura estiver ativa.",
+      "content_type": "telegram_chat",
+      "content_value": "-1000000000000",
+      "sort_order": 2,
+      "is_active": false
+    }
+  ],
+  "plans": [
+    {
+      "slug": "plano-1",
+      "name": "Plano 1 — Pack Individual",
+      "description": "Pack avulso com acesso vitalício.",
+      "price": "2.50",
+      "access_type": "one_time",
+      "duration_days": null,
+      "sort_order": 1,
+      "is_active": true,
+      "products": ["pack-1"]
+    },
+    {
+      "slug": "plano-2",
+      "name": "Plano 2 — Acesso Semanal",
+      "description": "7 dias de acesso à Área VIP.",
+      "price": "5.00",
+      "access_type": "subscription",
+      "duration_days": 7,
+      "sort_order": 2,
+      "is_active": true,
+      "products": ["conteudo-semanal", "grupo-vip"]
+    },
+    {
+      "slug": "plano-3",
+      "name": "Plano 3 — Assinatura Mensal",
+      "description": "30 dias de acesso completo: Área VIP + Pack 1.",
+      "price": "15.00",
+      "access_type": "subscription",
+      "duration_days": 30,
+      "sort_order": 3,
+      "is_active": true,
+      "products": ["pack-1", "conteudo-semanal", "grupo-vip"]
+    }
+  ]
+}

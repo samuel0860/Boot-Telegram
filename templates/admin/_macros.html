@@ -1,0 +1,27 @@
+{% macro pagination(p, base) -%}
+{% if p.pages > 1 %}
+<div class="pager">
+  {% set sep = '&' if '?' in base else '?' %}
+  {% if p.page > 1 %}<a class="btn small ghost" href="{{ base }}{{ sep }}page={{ p.page - 1 }}">← Anterior</a>{% endif %}
+  <span>Página {{ p.page }} de {{ p.pages }} · {{ p.total }} registros</span>
+  {% if p.page < p.pages %}<a class="btn small ghost" href="{{ base }}{{ sep }}page={{ p.page + 1 }}">Próxima →</a>{% endif %}
+</div>
+{% else %}
+<div class="pager"><span>{{ p.total }} registro(s)</span></div>
+{% endif %}
+{%- endmacro %}
+
+{% macro status(value) -%}
+<span class="tag tag-{{ value }}">{{ value }}</span>
+{%- endmacro %}
+
+{% macro csrf() -%}
+<input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+{%- endmacro %}
+
+{% macro filters(base, current, options, param='status') -%}
+<div class="filters">
+  <a href="{{ base }}" class="chip {{ 'on' if not current }}">Todos</a>
+  {% for o in options %}<a href="{{ base }}?{{ param }}={{ o }}" class="chip {{ 'on' if current == o }}">{{ o }}</a>{% endfor %}
+</div>
+{%- endmacro %}

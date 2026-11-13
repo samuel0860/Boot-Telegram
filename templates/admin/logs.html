@@ -1,0 +1,24 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import pagination, filters with context %}
+{% block title %}Histórico{% endblock %}
+{% block content %}
+<h1>Histórico de acessos e eventos</h1>
+{{ filters('/admin/logs', action, actions, 'action') }}
+<div class="table-wrap"><table>
+  <thead><tr><th>Data</th><th>Ação</th><th>Usuário</th><th>Admin</th><th>Pedido</th><th>IP</th><th>Detalhes</th></tr></thead>
+  <tbody>
+  {% for l in logs %}
+    <tr>
+      <td>{{ l.created_at|dt }}</td>
+      <td><code>{{ l.action }}</code></td>
+      <td>{% if l.user %}<a href="/admin/users/{{ l.user_id }}">{{ l.user.display_name }}</a>{% else %}—{% endif %}</td>
+      <td>{{ l.admin_user.username if l.admin_user else '—' }}</td>
+      <td>{{ '#' ~ l.order_id if l.order_id else '—' }}</td>
+      <td>{{ l.ip_address or '—' }}</td>
+      <td class="mono">{{ l.details|tojson if l.details else '' }}</td>
+    </tr>
+  {% else %}<tr><td colspan="7" class="empty">Nenhum registro.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{{ pagination(pager, '/admin/logs?action=' ~ (action|urlencode)) }}
+{% endblock %}

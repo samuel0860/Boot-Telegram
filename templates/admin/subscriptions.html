@@ -1,0 +1,34 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import pagination, status as tag, csrf with context %}
+{% block title %}Assinaturas{% endblock %}
+{% block content %}
+<h1>Assinaturas e acessos</h1>
+<div class="filters">
+  <a href="?status=active" class="chip {{ 'on' if status == 'active' }}">Ativas</a>
+  <a href="?status=expired" class="chip {{ 'on' if status == 'expired' }}">Vencidas</a>
+  <a href="?status=revoked" class="chip {{ 'on' if status == 'revoked' }}">Encerradas</a>
+  <a href="?status=all" class="chip {{ 'on' if status == 'all' }}">Todas</a>
+</div>
+<div class="table-wrap"><table>
+  <thead><tr><th>#</th><th>Usuário</th><th>Plano</th><th>Status</th><th>Início</th><th>Vencimento</th><th>Removido dos chats</th><th></th></tr></thead>
+  <tbody>
+  {% for s in subs %}
+    <tr>
+      <td>{{ s.id }}</td>
+      <td><a href="/admin/users/{{ s.user_id }}">{{ s.user.display_name }}</a></td>
+      <td>{{ s.plan.name }}</td>
+      <td>{{ tag(s.status.value) }}{% if s.revoke_reason %}<br><small>{{ s.revoke_reason }}</small>{% endif %}</td>
+      <td>{{ s.starts_at|dt }}</td>
+      <td>{{ s.expires_at|dt if s.expires_at else 'vitalício' }}</td>
+      <td>{{ s.access_removed_at|dt }}</td>
+      <td>{% if s.status.value == 'active' %}
+        <form method="post" action="/admin/subscriptions/{{ s.id }}/revoke" data-confirm="Encerrar este acesso?">
+          {{ csrf() }}<input type="hidden" name="reason" value="encerrado pelo administrador">
+          <button class="btn small danger">Encerrar</button>
+        </form>{% endif %}</td>
+    </tr>
+  {% else %}<tr><td colspan="8" class="empty">Nenhum registro.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{{ pagination(pager, '/admin/subscriptions?status=' ~ status) }}
+{% endblock %}

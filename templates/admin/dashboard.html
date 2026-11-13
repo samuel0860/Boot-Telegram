@@ -1,0 +1,35 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import status with context %}
+{% block title %}Dashboard{% endblock %}
+{% block content %}
+<h1>Dashboard</h1>
+{% if not payments_configured %}<div class="flash warn">MP_ACCESS_TOKEN não configurado: o bot não consegue gerar cobranças PIX.</div>{% endif %}
+{% if not webhook_configured %}<div class="flash warn">MP_WEBHOOK_SECRET não configurado: webhooks serão recusados (a confirmação dependerá da reconciliação periódica).</div>{% endif %}
+<div class="stats">
+  <div class="stat"><span>Usuários</span><b>{{ stats.users }}</b><small>+{{ stats.users_30d }} em 30 dias</small></div>
+  <div class="stat"><span>Acessos ativos</span><b>{{ stats.active_subs }}</b></div>
+  <div class="stat"><span>Receita (30 dias)</span><b>{{ stats.revenue_30d|brl }}</b><small>{{ stats.paid_30d }} vendas</small></div>
+  <div class="stat"><span>Receita total</span><b>{{ stats.revenue_total|brl }}</b></div>
+  <div class="stat"><span>Pedidos pendentes</span><b>{{ stats.pending_orders }}</b></div>
+  <div class="stat {{ 'alert' if stats.undelivered }}"><span>Pagos não entregues</span><b>{{ stats.undelivered }}</b></div>
+  <div class="stat {{ 'alert' if stats.failed_webhooks }}"><span>Webhooks com falha (30d)</span><b>{{ stats.failed_webhooks }}</b></div>
+</div>
+
+<h2>Últimos pedidos</h2>
+<div class="table-wrap"><table>
+  <thead><tr><th>#</th><th>Usuário</th><th>Plano</th><th>Valor</th><th>Status</th><th>Criado</th><th>Entregue</th></tr></thead>
+  <tbody>
+  {% for o in recent %}
+    <tr>
+      <td>{{ o.id }}</td>
+      <td><a href="/admin/users/{{ o.user_id }}">{{ o.user.display_name }}</a></td>
+      <td>{{ o.plan.name }}</td>
+      <td>{{ o.amount|brl }}</td>
+      <td>{{ status(o.status.value) }}</td>
+      <td>{{ o.created_at|dt }}</td>
+      <td>{{ o.delivered_at|dt }}</td>
+    </tr>
+  {% else %}<tr><td colspan="7" class="empty">Nenhum pedido ainda.</td></tr>{% endfor %}
+  </tbody>
+</table></div>
+{% endblock %}

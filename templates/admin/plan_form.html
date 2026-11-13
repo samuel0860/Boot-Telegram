@@ -1,0 +1,35 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import csrf with context %}
+{% block title %}{{ 'Editar' if plan else 'Novo' }} plano{% endblock %}
+{% block content %}
+<h1>{{ 'Editar plano: ' ~ plan.name if plan else 'Novo plano' }}</h1>
+{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+<form method="post" action="/admin/plans/save" class="form card">
+  {{ csrf() }}
+  <input type="hidden" name="plan_id" value="{{ plan.id if plan else '' }}">
+  <div class="grid2">
+    <label>Nome* <input name="name" value="{{ form.name }}" required maxlength="100"></label>
+    <label>Slug <input name="slug" value="{{ form.slug }}" maxlength="100" placeholder="gerado a partir do nome"></label>
+    <label>Preço (R$)* <input name="price" value="{{ form.price }}" required inputmode="decimal" placeholder="9,90"></label>
+    <label>Tipo de acesso*
+      <select name="access_type">
+        <option value="one_time" {{ 'selected' if form.access_type == 'one_time' }}>Pack individual (pagamento único)</option>
+        <option value="subscription" {{ 'selected' if form.access_type == 'subscription' }}>Assinatura (com validade)</option>
+      </select>
+    </label>
+    <label>Duração (dias) <input name="duration_days" value="{{ form.duration_days }}" inputmode="numeric" placeholder="vazio = vitalício (somente pack)"></label>
+    <label>Ordem de exibição <input name="sort_order" value="{{ form.sort_order }}" inputmode="numeric"></label>
+  </div>
+  <label>Descrição (mostrada no bot) <textarea name="description" rows="3" maxlength="2000">{{ form.description }}</textarea></label>
+  <label class="check-line"><input type="checkbox" name="is_active" value="1" {{ 'checked' if form.is_active }}> Oferta ativa (visível no bot)</label>
+
+  <fieldset>
+    <legend>Conteúdos liberados por este plano</legend>
+    {% for p in products %}
+      <label class="check-line"><input type="checkbox" name="product_ids" value="{{ p.id }}" {{ 'checked' if p.id in form.product_ids }}>
+        {{ p.name }} <small>({{ p.category.name if p.category else 'sem categoria' }} · {{ p.content_type.value }}{{ ' · inativo' if not p.is_active }})</small></label>
+    {% else %}<p class="hint">Nenhum conteúdo cadastrado. <a href="/admin/products/new">Cadastre um conteúdo</a>.</p>{% endfor %}
+  </fieldset>
+  <div class="actions"><button class="btn">Salvar</button> <a class="btn ghost" href="/admin/plans">Cancelar</a></div>
+</form>
+{% endblock %}
