@@ -2,6 +2,7 @@ name: telegram_vendas
 
 # Dentro do Docker, os serviços acessam o banco pelo NOME DO SERVIÇO ("postgres").
 x-app-env: &app-env
+  EVOLUTION_API_URL: http://whatsapp:8080
   DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-telegram}:${POSTGRES_PASSWORD:?Defina POSTGRES_PASSWORD no .env}@postgres:5432/${POSTGRES_DB:-telegram_vendas}
 
 services:
@@ -79,6 +80,67 @@ services:
         condition: service_completed_successfully
     networks: [internal]
 
+  # Gateway do WhatsApp (Evolution API — open source). Conecta um número via QR Code.
+  # Não publica porta: só backend e bot acessam pela rede interna (http://whatsapp:8080).
+  whatsapp:
+    image: evoapicloud/evolution-api:v2.3.7
+    container_name: telegram_whatsapp
+    restart: unless-stopped
+    environment:
+      SERVER_TYPE: http
+      SERVER_PORT: "8080"
+      SERVER_URL: http://whatsapp:8080
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY:?Defina EVOLUTION_API_KEY no .env}
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER:-telegram}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-telegram_vendas}?schema=evolution_api
+      DATABASE_CONNECTION_CLIENT_NAME: telegram_vendas
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "false"
+      DATABASE_SAVE_DATA_CHATS: "false"
+      DATABASE_SAVE_DATA_LABELS: "false"
+      DATABASE_SAVE_DATA_HISTORIC: "false"
+      DATABASE_SAVE_IS_ON_WHATSAPP: "false"
+      CACHE_REDIS_ENABLED: "false"
+      CACHE_LOCAL_ENABLED: "true"
+      DEL_INSTANCE: "false"
+      TELEMETRY_ENABLED: "false"
+      CONFIG_SESSION_PHONE_CLIENT: Telegram Vendas
+      CONFIG_SESSION_PHONE_NAME: Chrome
+      QRCODE_LIMIT: "30"
+      LOG_LEVEL: ERROR,WARN,INFO
+      LANGUAGE: pt-BR
+    volumes:
+      - whatsapp_instances:/evolution/instances
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+
+  # Backup diário automático do banco em ./backups (mantém BACKUP_KEEP_DAYS dias).
+  backup:
+    image: postgres:16-alpine
+    container_name: telegram_backup
+    restart: unless-stopped
+    user: "${BACKUP_UID:-1000}:${BACKUP_GID:-1000}"
+    entrypoint: ["/bin/sh", "/backup-loop.sh"]
+    environment:
+      PGHOST: postgres
+      PGUSER: ${POSTGRES_USER:-telegram}
+      PGPASSWORD: ${POSTGRES_PASSWORD}
+      PGDATABASE: ${POSTGRES_DB:-telegram_vendas}
+      BACKUP_HOUR: ${BACKUP_HOUR:-3}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+      TZ: ${DISPLAY_TIMEZONE:-America/Sao_Paulo}
+    volumes:
+      - ./backups:/backups
+      - ./scripts/backup-loop.sh:/backup-loop.sh:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+
   # Proxy HTTPS opcional (certificado automático Let's Encrypt).
   # Ative com: docker compose --profile proxy up -d
   caddy:
@@ -102,6 +164,8 @@ services:
 volumes:
   postgres_data:
     name: telegram_postgres_data
+  whatsapp_instances:
+    name: telegram_whatsapp_instances
   caddy_data:
     name: telegram_caddy_data
   caddy_config:

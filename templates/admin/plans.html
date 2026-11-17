@@ -1,32 +1,46 @@
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import csrf with context %}
+{% from "admin/_icons.html" import icon with context %}
+{% from "admin/_macros.html" import csrf, page_header with context %}
 {% block title %}Planos{% endblock %}
 {% block content %}
-<div class="head">
-  <h1>Planos e ofertas</h1>
-  {% if admin.is_superuser %}<a class="btn" href="/admin/plans/new">+ Novo plano</a>{% endif %}
+{% call page_header('Planos', 'As opções de compra que aparecem no bot. Cada plano libera um ou mais conteúdos.') %}
+  {% if admin.is_superuser %}<a class="btn" href="/admin/plans/new">{{ icon('plus') }}Novo plano</a>{% endif %}
+{% endcall %}
+
+<div class="card-grid">
+{% for p in plans %}
+  <article class="card plan-card {{ 'muted' if not p.is_active }}">
+    <div class="plan-top">
+      <span class="badge {{ 'badge-info' if p.access_type.value == 'subscription' else 'badge-muted' }}">
+        {{ 'Assinatura' if p.access_type.value == 'subscription' else 'Pack' }}</span>
+      {% if p.is_active %}<span class="badge badge-ok"><span class="dot"></span>No bot</span>
+      {% else %}<span class="badge badge-muted"><span class="dot"></span>Oculto</span>{% endif %}
+    </div>
+    <h3>{{ p.name }}</h3>
+    <div class="plan-price">{{ p.price|brl }}</div>
+    <p class="hint">{{ p.duration_label|capitalize }}{% if p.description %} · {{ p.description }}{% endif %}</p>
+    <div class="plan-section">
+      <small class="hint">Libera</small>
+      <div>{% for prod in p.products %}<span class="chip small {{ 'off' if not prod.is_active }}">{{ prod.name }}</span>{% else %}<span class="err">nenhum conteúdo: edite e escolha o que liberar</span>{% endfor %}</div>
+    </div>
+    <div class="plan-foot">
+      <span class="hint">{{ icon('cart') }} {{ sold.get(p.id, 0) }} venda{{ 's' if sold.get(p.id, 0) != 1 }}</span>
+      {% if admin.is_superuser %}
+      <div class="actions">
+        <form method="post" action="/admin/plans/{{ p.id }}/toggle">{{ csrf() }}
+          <button class="btn btn-sm btn-secondary">{{ icon('pause' if p.is_active else 'play') }}{{ 'Ocultar' if p.is_active else 'Mostrar' }}</button></form>
+        <a class="btn btn-sm" href="/admin/plans/{{ p.id }}/edit">{{ icon('edit') }}Editar</a>
+      </div>
+      {% endif %}
+    </div>
+  </article>
+{% else %}
+  <div class="card empty">
+    <p><b>Nenhum plano ainda.</b></p>
+    <p class="hint mt-2">Crie o primeiro plano para o bot começar a vender.</p>
+    {% if admin.is_superuser %}<a class="btn mt-3" href="/admin/plans/new">{{ icon('plus') }}Criar plano</a>{% endif %}
+  </div>
+{% endfor %}
 </div>
-<div class="table-wrap"><table>
-  <thead><tr><th>Ordem</th><th>Nome</th><th>Preço</th><th>Tipo</th><th>Duração</th><th>Conteúdos</th><th>Vendas</th><th>Status</th><th></th></tr></thead>
-  <tbody>
-  {% for p in plans %}
-    <tr class="{{ 'muted' if not p.is_active }}">
-      <td>{{ p.sort_order }}</td>
-      <td><b>{{ p.name }}</b><br><small>{{ p.slug }}</small></td>
-      <td>{{ p.price|brl }}</td>
-      <td>{{ 'Pack (único)' if p.access_type.value == 'one_time' else 'Assinatura' }}</td>
-      <td>{{ p.duration_label }}</td>
-      <td>{% for prod in p.products %}<span class="chip small {{ 'off' if not prod.is_active }}">{{ prod.name }}</span>{% else %}<span class="err">nenhum</span>{% endfor %}</td>
-      <td>{{ sold.get(p.id, 0) }}</td>
-      <td>{% if p.is_active %}<span class="tag tag-active">ativo</span>{% else %}<span class="tag tag-cancelled">inativo</span>{% endif %}</td>
-      <td class="actions">{% if admin.is_superuser %}
-        <a class="btn small ghost" href="/admin/plans/{{ p.id }}/edit">Editar</a>
-        <form method="post" action="/admin/plans/{{ p.id }}/toggle" class="inline">{{ csrf() }}
-          <button class="btn small {{ 'danger' if p.is_active }}">{{ 'Desativar' if p.is_active else 'Ativar' }}</button></form>
-      {% endif %}</td>
-    </tr>
-  {% else %}<tr><td colspan="9" class="empty">Nenhum plano. Rode <code>python manage.py seed</code> ou crie um novo.</td></tr>{% endfor %}
-  </tbody>
-</table></div>
-<p class="hint">Alterar o preço não afeta pedidos já criados (o valor é registrado no pedido). Planos não são excluídos para preservar o histórico — desative-os.</p>
+<p class="hint mt-3">{{ icon('info') }} Planos não são apagados, para preservar o histórico de vendas: use “Ocultar”. Mudar o preço não altera pedidos já feitos.</p>
 {% endblock %}

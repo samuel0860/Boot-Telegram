@@ -1,35 +1,85 @@
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import status with context %}
+{% from "admin/_macros.html" import status, page_header with context %}
+{% from "admin/_icons.html" import icon with context %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
-<h1>Dashboard</h1>
-{% if not payments_configured %}<div class="flash warn">MP_ACCESS_TOKEN não configurado: o bot não consegue gerar cobranças PIX.</div>{% endif %}
-{% if not webhook_configured %}<div class="flash warn">MP_WEBHOOK_SECRET não configurado: webhooks serão recusados (a confirmação dependerá da reconciliação periódica).</div>{% endif %}
-<div class="stats">
-  <div class="stat"><span>Usuários</span><b>{{ stats.users }}</b><small>+{{ stats.users_30d }} em 30 dias</small></div>
-  <div class="stat"><span>Acessos ativos</span><b>{{ stats.active_subs }}</b></div>
-  <div class="stat"><span>Receita (30 dias)</span><b>{{ stats.revenue_30d|brl }}</b><small>{{ stats.paid_30d }} vendas</small></div>
-  <div class="stat"><span>Receita total</span><b>{{ stats.revenue_total|brl }}</b></div>
-  <div class="stat"><span>Pedidos pendentes</span><b>{{ stats.pending_orders }}</b></div>
-  <div class="stat {{ 'alert' if stats.undelivered }}"><span>Pagos não entregues</span><b>{{ stats.undelivered }}</b></div>
-  <div class="stat {{ 'alert' if stats.failed_webhooks }}"><span>Webhooks com falha (30d)</span><b>{{ stats.failed_webhooks }}</b></div>
+{% call page_header('Olá, ' ~ admin.username ~ '!', 'Resumo do seu negócio e do que ainda falta configurar.') %}{% endcall %}
+
+{# ---------------- Serviços ---------------- #}
+<div class="service-row">
+  <div class="service"><span class="status-dot {{ 'on' if bot_online }}"></span>
+    <div><b>Bot do Telegram</b><small>{{ 'online' if bot_online else 'offline ou iniciando' }}</small></div></div>
+  <div class="service"><span class="status-dot {{ 'on' if payments_configured }}"></span>
+    <div><b>Pagamentos PIX</b><small>{{ 'configurado' if payments_configured else 'não configurado' }}</small></div></div>
+  <a class="service" href="/admin/promo"><span class="status-dot {{ 'on' if promo_enabled }}"></span>
+    <div><b>Bot de promoções</b><small>{{ 'ligado' if promo_enabled else 'desligado' }}</small></div></a>
+  <a class="service" href="/admin/whatsapp"><span class="status-dot {{ 'on' if wa_enabled }}"></span>
+    <div><b>WhatsApp</b><small>{{ 'enviando' if wa_enabled else 'desligado' }}</small></div></a>
 </div>
 
-<h2>Últimos pedidos</h2>
+{# ---------------- Primeiros passos ---------------- #}
+{% if setup_done < setup|length %}
+<section class="card onboarding">
+  <div class="onboarding-head">
+    <div><h2>Primeiros passos</h2><p class="hint">Complete as etapas para colocar tudo para funcionar.</p></div>
+    <div class="progress-wrap">
+      <span><b>{{ setup_done }}</b> de {{ setup|length }}</span>
+      <progress value="{{ setup_done }}" max="{{ setup|length }}"></progress>
+    </div>
+  </div>
+  <ul class="setup-list">
+    {% for done, title, desc, link, link_text, optional in setup %}
+    <li class="{{ 'done' if done }}">
+      <span class="setup-check">{{ icon('check') if done else '' }}</span>
+      <div class="setup-text"><b>{{ title }}</b>{% if optional %} <span class="badge badge-muted">opcional</span>{% endif %}
+        <small>{{ desc }}</small></div>
+      {% if not done and link %}<a class="btn btn-sm btn-secondary" href="{{ link }}">{{ link_text }}</a>
+      {% elif not done %}<span class="hint">veja o GUIA.md</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+</section>
+{% endif %}
+
+{% if not webhook_configured and payments_configured %}<div class="alert alert-warn">{{ icon('alert') }}<span><b>Webhook sem assinatura:</b> configure <code>MP_WEBHOOK_SECRET</code>. Até lá, pagamentos são confirmados pela verificação periódica.</span></div>{% endif %}
+
+{# ---------------- Números ---------------- #}
+<h2 class="section-title">Vendas</h2>
+<div class="kpis">
+  <div class="kpi"><div class="kpi-top"><span class="kpi-label">Receita (30 dias)</span><span class="kpi-icon ok">{{ icon('trending') }}</span></div>
+    <span class="kpi-value">{{ stats.revenue_30d|brl }}</span><span class="kpi-sub">{{ stats.paid_30d }} venda{{ 's' if stats.paid_30d != 1 }}</span></div>
+  <div class="kpi"><div class="kpi-top"><span class="kpi-label">Usuários no bot</span><span class="kpi-icon info">{{ icon('users') }}</span></div>
+    <span class="kpi-value">{{ stats.users }}</span><span class="kpi-sub">+{{ stats.users_30d }} nos últimos 30 dias</span></div>
+  <div class="kpi"><div class="kpi-top"><span class="kpi-label">Acessos ativos</span><span class="kpi-icon ok">{{ icon('repeat') }}</span></div>
+    <span class="kpi-value">{{ stats.active_subs }}</span><span class="kpi-sub">{{ stats.pending_orders }} pedido{{ 's' if stats.pending_orders != 1 }} aguardando PIX</span></div>
+</div>
+
+<h2 class="section-title">Promoções</h2>
+<div class="kpis">
+  <div class="kpi"><div class="kpi-top"><span class="kpi-label">Publicadas (24h)</span><span class="kpi-icon info">{{ icon('megaphone') }}</span></div>
+    <span class="kpi-value">{{ promo_stats.posted_24h }}</span><span class="kpi-sub">no canal do Telegram</span></div>
+  <div class="kpi"><div class="kpi-top"><span class="kpi-label">Aguardando aprovação</span><span class="kpi-icon warn">{{ icon('clock') }}</span></div>
+    <span class="kpi-value">{{ promo_stats.new }}</span><span class="kpi-sub"><a href="/admin/promo/offers">ver ofertas</a></span></div>
+  <div class="kpi {{ 'alert' if stats.undelivered or stats.failed_webhooks or promo_stats.failed }}"><div class="kpi-top"><span class="kpi-label">Precisa de atenção</span><span class="kpi-icon {{ 'danger' if stats.undelivered or stats.failed_webhooks or promo_stats.failed }}">{{ icon('alert') }}</span></div>
+    <span class="kpi-value">{{ stats.undelivered + stats.failed_webhooks + promo_stats.failed }}</span>
+    <span class="kpi-sub">entregas, pagamentos e posts com erro</span></div>
+</div>
+
+<div class="page-header mb-3"><h2 class="section-title mb-0">Últimos pedidos</h2><a class="btn btn-sm btn-secondary" href="/admin/orders">Ver todos</a></div>
 <div class="table-wrap"><table>
   <thead><tr><th>#</th><th>Usuário</th><th>Plano</th><th>Valor</th><th>Status</th><th>Criado</th><th>Entregue</th></tr></thead>
   <tbody>
   {% for o in recent %}
     <tr>
-      <td>{{ o.id }}</td>
+      <td class="hint">{{ o.id }}</td>
       <td><a href="/admin/users/{{ o.user_id }}">{{ o.user.display_name }}</a></td>
       <td>{{ o.plan.name }}</td>
-      <td>{{ o.amount|brl }}</td>
+      <td><b>{{ o.amount|brl }}</b></td>
       <td>{{ status(o.status.value) }}</td>
       <td>{{ o.created_at|dt }}</td>
       <td>{{ o.delivered_at|dt }}</td>
     </tr>
-  {% else %}<tr><td colspan="7" class="empty">Nenhum pedido ainda.</td></tr>{% endfor %}
+  {% else %}<tr><td colspan="7" class="empty">Nenhum pedido ainda. Eles aparecem aqui quando alguém compra pelo bot.</td></tr>{% endfor %}
   </tbody>
 </table></div>
 {% endblock %}

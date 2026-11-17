@@ -1,42 +1,56 @@
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import csrf with context %}
+{% from "admin/_icons.html" import icon with context %}
+{% from "admin/_macros.html" import csrf, page_header with context %}
 {% block title %}Categorias{% endblock %}
 {% block content %}
-<h1>Categorias de conteúdo</h1>
-<div class="table-wrap"><table>
-  <thead><tr><th>Ordem</th><th>Nome</th><th>Descrição</th><th>Conteúdos</th><th>Status</th><th></th></tr></thead>
-  <tbody>
+{% call page_header('Categorias', 'Agrupam os conteúdos na lista “Ver conteúdo disponível” do bot.') %}{% endcall %}
+
+<div class="layout-2col">
+<div>
   {% for c in categories %}
-    <tr class="{{ 'muted' if not c.is_active }}">
-      {% if admin.is_superuser %}
-      <td colspan="3">
-        <form method="post" action="/admin/categories/save" class="row-form">{{ csrf() }}
-          <input type="hidden" name="category_id" value="{{ c.id }}">
-          <input name="sort_order" value="{{ c.sort_order }}" class="w-xs" inputmode="numeric">
-          <input name="name" value="{{ c.name }}" required maxlength="100">
-          <input name="description" value="{{ c.description or '' }}" maxlength="1000" placeholder="descrição">
-          <button class="btn small ghost">Salvar</button>
-        </form>
-      </td>
-      {% else %}
-      <td>{{ c.sort_order }}</td><td>{{ c.name }}</td><td>{{ c.description or '' }}</td>
-      {% endif %}
-      <td>{{ counts.get(c.id, 0) }}</td>
-      <td>{% if c.is_active %}<span class="tag tag-active">ativa</span>{% else %}<span class="tag tag-cancelled">inativa</span>{% endif %}</td>
-      <td>{% if admin.is_superuser %}<form method="post" action="/admin/categories/{{ c.id }}/toggle" class="inline">{{ csrf() }}
-        <button class="btn small {{ 'danger' if c.is_active }}">{{ 'Desativar' if c.is_active else 'Ativar' }}</button></form>{% endif %}</td>
-    </tr>
-  {% else %}<tr><td colspan="6" class="empty">Nenhuma categoria.</td></tr>{% endfor %}
-  </tbody>
-</table></div>
+  <section class="card {{ 'muted' if not c.is_active }}">
+    {% if admin.is_superuser %}
+    <form method="post" action="/admin/categories/save" class="form">{{ csrf() }}
+      <input type="hidden" name="category_id" value="{{ c.id }}">
+      <div class="cat-row">
+        <span class="card-icon">{{ icon('folder') }}</span>
+        <div class="grid2 flex-1">
+          <label>Nome <input name="name" value="{{ c.name }}" required maxlength="100"></label>
+          <label>Descrição <small>opcional</small><input name="description" value="{{ c.description or '' }}" maxlength="1000"></label>
+        </div>
+        <label class="w-pos">Posição<input name="sort_order" value="{{ c.sort_order }}" inputmode="numeric"></label>
+      </div>
+      <div class="cat-foot">
+        <span class="hint">{{ counts.get(c.id, 0) }} conteúdo{{ 's' if counts.get(c.id, 0) != 1 }} ·
+          {% if c.is_active %}<span class="badge badge-ok"><span class="dot"></span>Visível</span>{% else %}<span class="badge badge-muted"><span class="dot"></span>Oculta</span>{% endif %}</span>
+        <div class="actions">
+          <button class="btn btn-sm btn-secondary" formaction="/admin/categories/{{ c.id }}/toggle">{{ 'Ocultar' if c.is_active else 'Mostrar' }}</button>
+          <button class="btn btn-sm">{{ icon('save') }}Salvar</button>
+        </div>
+      </div>
+    </form>
+    {% else %}
+    <div class="cat-row"><span class="card-icon">{{ icon('folder') }}</span>
+      <div><b>{{ c.name }}</b><p class="hint">{{ c.description or '' }} · {{ counts.get(c.id, 0) }} conteúdo(s)</p></div></div>
+    {% endif %}
+  </section>
+  {% else %}
+  <div class="card empty"><p><b>Nenhuma categoria ainda.</b></p><p class="hint mt-2">Crie a primeira ao lado.</p></div>
+  {% endfor %}
+</div>
 
 {% if admin.is_superuser %}
-<h2>Nova categoria</h2>
-<form method="post" action="/admin/categories/save" class="row-form card">{{ csrf() }}
-  <input name="sort_order" value="0" class="w-xs" inputmode="numeric" title="ordem">
-  <input name="name" required maxlength="100" placeholder="Nome">
-  <input name="description" maxlength="1000" placeholder="Descrição (opcional)">
-  <button class="btn small">Adicionar</button>
-</form>
+<aside class="sticky">
+  <section class="card">
+    <h2 class="mb-3">Nova categoria</h2>
+    <form method="post" action="/admin/categories/save" class="form">{{ csrf() }}
+      <label>Nome <input name="name" required maxlength="100" placeholder="Ex.: Área VIP"></label>
+      <label>Descrição <small>opcional</small><input name="description" maxlength="1000"></label>
+      <input type="hidden" name="sort_order" value="0">
+      <button class="btn btn-block">{{ icon('plus') }}Adicionar categoria</button>
+    </form>
+  </section>
+</aside>
 {% endif %}
+</div>
 {% endblock %}

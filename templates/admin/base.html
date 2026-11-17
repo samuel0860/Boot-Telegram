@@ -1,43 +1,86 @@
+{% from "admin/_icons.html" import icon with context %}
+{%- macro navlink(href, ic, text, prefix=None) -%}
+{%- set p = request.url.path -%}
+{%- set active = (p == href) if prefix is none else p.startswith(prefix) -%}
+<a href="{{ href }}" class="nav-link {{ 'active' if active }}">{{ icon(ic) }}<span>{{ text }}</span></a>
+{%- endmacro -%}
 <!doctype html>
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
-  <title>{% block title %}Painel{% endblock %} · Admin</title>
+  <title>{% block title %}Painel{% endblock %} · Telegram Vendas</title>
   <link rel="icon" href="/static/images/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/static/css/admin.css">
+  {% block head %}{% endblock %}
 </head>
 <body>
 {% if admin %}
-<header class="top">
-  <a class="brand" href="/admin/">⚡ Telegram Vendas</a>
-  <nav>
-    <a href="/admin/">Dashboard</a>
-    <a href="/admin/users">Usuários</a>
-    <a href="/admin/orders">Pedidos</a>
-    <a href="/admin/payments">Transações</a>
-    <a href="/admin/subscriptions">Assinaturas</a>
-    <a href="/admin/plans">Planos</a>
-    <a href="/admin/products">Conteúdos</a>
-    <a href="/admin/categories">Categorias</a>
-    <a href="/admin/logs">Histórico</a>
-    <a href="/admin/webhooks">Webhooks</a>
-    {% if admin.is_superuser %}<a href="/admin/admins">Admins</a>{% endif %}
-  </nav>
-  <div class="me">
-    <a href="/admin/account">{{ admin.username }}</a>
-    <form method="post" action="/admin/logout" class="inline">
-      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-      <button class="btn small ghost">Sair</button>
-    </form>
+<div class="shell">
+  <aside class="sidebar" id="sidebar">
+    <a class="brand" href="/admin/">
+      <span class="brand-mark">{{ icon('zap') }}</span>
+      <span class="brand-text">Telegram Vendas<small>Painel administrativo</small></span>
+    </a>
+    <nav class="nav">
+      <div class="nav-section">Visão geral</div>
+      {{ navlink('/admin/', 'dashboard', 'Dashboard') }}
+
+      <div class="nav-section">Vendas</div>
+      {{ navlink('/admin/orders', 'cart', 'Pedidos', '/admin/orders') }}
+      {{ navlink('/admin/payments', 'card', 'Transações', '/admin/payments') }}
+      {{ navlink('/admin/subscriptions', 'repeat', 'Assinaturas', '/admin/subscriptions') }}
+      {{ navlink('/admin/users', 'users', 'Usuários', '/admin/users') }}
+
+      <div class="nav-section">Catálogo</div>
+      {{ navlink('/admin/plans', 'package', 'Planos', '/admin/plans') }}
+      {{ navlink('/admin/products', 'file', 'Conteúdos', '/admin/products') }}
+      {{ navlink('/admin/categories', 'folder', 'Categorias', '/admin/categories') }}
+
+      <div class="nav-section">Promoções</div>
+      {{ navlink('/admin/promo', 'megaphone', 'Bot de promoções') }}
+      {{ navlink('/admin/promo/offers', 'tag', 'Ofertas', '/admin/promo/offers') }}
+      {{ navlink('/admin/whatsapp', 'phone', 'WhatsApp', '/admin/whatsapp') }}
+
+      <div class="nav-section">Sistema</div>
+      {{ navlink('/admin/logs', 'history', 'Histórico', '/admin/logs') }}
+      {{ navlink('/admin/webhooks', 'activity', 'Webhooks', '/admin/webhooks') }}
+      {% if admin.is_superuser %}{{ navlink('/admin/admins', 'shield', 'Administradores', '/admin/admins') }}{% endif %}
+    </nav>
+    <div class="sidebar-footer">
+      <a href="/admin/account" class="user-chip">
+        <span class="avatar">{{ admin.username[:1]|upper }}</span>
+        <span class="user-info"><b>{{ admin.username }}</b><small>{{ 'Superusuário' if admin.is_superuser else 'Operador' }}</small></span>
+      </a>
+      <form method="post" action="/admin/logout">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+        <button class="icon-btn" title="Sair" aria-label="Sair">{{ icon('logout') }}</button>
+      </form>
+    </div>
+  </aside>
+  <div class="sidebar-backdrop" id="sidebar-backdrop"></div>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn menu-toggle" id="menu-toggle" aria-label="Abrir menu">{{ icon('menu') }}</button>
+      <span class="topbar-title">{{ self.title() }}</span>
+      <a class="topbar-link" href="/" target="_blank" rel="noopener">{{ icon('external') }}<span>Ver página inicial</span></a>
+    </header>
+    <main class="content">
+      {% for f in flashes %}
+        <div class="alert alert-{{ f.kind }}">{{ icon('check' if f.kind == 'ok' else 'alert') }}<span>{{ f.message }}</span></div>
+      {% endfor %}
+      {% block content %}{% endblock %}
+    </main>
   </div>
-</header>
-{% endif %}
-<main class="container">
-  {% for f in flashes %}<div class="flash {{ f.kind }}">{{ f.message }}</div>{% endfor %}
-  {% block content %}{% endblock %}
+</div>
+{% else %}
+<main class="auth">
+  {% for f in flashes %}<div class="alert alert-{{ f.kind }}">{{ f.message }}</div>{% endfor %}
+  {% block auth %}{% endblock %}
 </main>
+{% endif %}
 <script src="/static/js/admin.js" defer></script>
 </body>
 </html>

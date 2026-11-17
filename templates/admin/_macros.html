@@ -1,27 +1,51 @@
-{% macro pagination(p, base) -%}
-{% if p.pages > 1 %}
-<div class="pager">
-  {% set sep = '&' if '?' in base else '?' %}
-  {% if p.page > 1 %}<a class="btn small ghost" href="{{ base }}{{ sep }}page={{ p.page - 1 }}">← Anterior</a>{% endif %}
-  <span>Página {{ p.page }} de {{ p.pages }} · {{ p.total }} registros</span>
-  {% if p.page < p.pages %}<a class="btn small ghost" href="{{ base }}{{ sep }}page={{ p.page + 1 }}">Próxima →</a>{% endif %}
-</div>
-{% else %}
-<div class="pager"><span>{{ p.total }} registro(s)</span></div>
-{% endif %}
-{%- endmacro %}
+{%- set STATUS = {
+  'pending': ('Pendente', 'warn'), 'paid': ('Pago', 'ok'), 'approved': ('Aprovado', 'ok'),
+  'active': ('Ativo', 'ok'), 'processed': ('Processado', 'ok'), 'posted': ('Publicada', 'ok'),
+  'expired': ('Expirado', 'muted'), 'cancelled': ('Cancelado', 'muted'), 'ignored': ('Ignorado', 'muted'),
+  'discarded': ('Descartada', 'muted'), 'refunded': ('Estornado', 'danger'), 'failed': ('Falhou', 'danger'),
+  'rejected': ('Recusado', 'danger'), 'revoked': ('Encerrado', 'danger'), 'charged_back': ('Contestado', 'danger'),
+  'received': ('Recebido', 'info'), 'new': ('Aguardando', 'info'), 'queued': ('Na fila', 'warn'),
+  'one_time': ('Pack único', 'info'), 'subscription': ('Assinatura', 'info'),
+  'inactive': ('Inativo', 'muted'), 'blocked': ('Bloqueado', 'danger'),
+} -%}
+
+{% macro label(value) -%}{{ STATUS.get(value, (value, ''))[0] }}{%- endmacro %}
 
 {% macro status(value) -%}
-<span class="tag tag-{{ value }}">{{ value }}</span>
+{%- set s = STATUS.get(value, (value, 'muted')) -%}
+<span class="badge badge-{{ s[1] }}"><span class="dot"></span>{{ s[0] }}</span>
 {%- endmacro %}
 
 {% macro csrf() -%}
 <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
 {%- endmacro %}
 
+{% macro pagination(p, base) -%}
+<div class="pager">
+  <span>{{ p.total }} registro{{ 's' if p.total != 1 }}{% if p.pages > 1 %} · página {{ p.page }} de {{ p.pages }}{% endif %}</span>
+  {% if p.pages > 1 %}
+  {% set sep = '&' if '?' in base else '?' %}
+  <div class="pager-nav">
+    {% if p.page > 1 %}<a class="btn btn-sm btn-secondary" href="{{ base }}{{ sep }}page={{ p.page - 1 }}">Anterior</a>{% endif %}
+    {% if p.page < p.pages %}<a class="btn btn-sm btn-secondary" href="{{ base }}{{ sep }}page={{ p.page + 1 }}">Próxima</a>{% endif %}
+  </div>
+  {% endif %}
+</div>
+{%- endmacro %}
+
 {% macro filters(base, current, options, param='status') -%}
-<div class="filters">
-  <a href="{{ base }}" class="chip {{ 'on' if not current }}">Todos</a>
-  {% for o in options %}<a href="{{ base }}?{{ param }}={{ o }}" class="chip {{ 'on' if current == o }}">{{ o }}</a>{% endfor %}
+<div class="segmented">
+  <a href="{{ base }}" class="{{ 'on' if not current }}">Todos</a>
+  {% for o in options %}<a href="{{ base }}?{{ param }}={{ o }}" class="{{ 'on' if current == o }}">{{ label(o) }}</a>{% endfor %}
+</div>
+{%- endmacro %}
+
+{% macro page_header(title, subtitle='') -%}
+<div class="page-header">
+  <div>
+    <h1>{{ title }}</h1>
+    {% if subtitle %}<p class="subtitle">{{ subtitle }}</p>{% endif %}
+  </div>
+  <div class="page-actions">{{ caller() if caller is defined else '' }}</div>
 </div>
 {%- endmacro %}

@@ -1,14 +1,20 @@
 {% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon with context %}
 {% block title %}Entrar{% endblock %}
-{% block content %}
-<div class="login">
-  <h1>🔐 Painel administrativo</h1>
-  {% if error %}<div class="flash error">{{ error }}</div>{% endif %}
+{% block auth %}
+<div class="auth-card">
+  <div class="auth-brand">
+    <span class="brand-mark">{{ icon('zap') }}</span>
+    <span class="brand-text">Telegram Vendas<small>Painel administrativo</small></span>
+  </div>
+  <h1>Entrar</h1>
+  <p class="subtitle">Acesse com seu usuário de administrador.</p>
+  {% if error %}<div class="alert alert-error">{{ icon('alert') }}<span>{{ error }}</span></div>{% endif %}
   <form method="post" action="/admin/login" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
     <label>Usuário <input name="username" required autocomplete="username" autofocus maxlength="64"></label>
     <label>Senha <input name="password" type="password" required autocomplete="current-password" maxlength="256"></label>
-    <button class="btn">Entrar</button>
+    <button class="btn btn-lg btn-block">{{ icon('lock') }}Entrar</button>
   </form>
 </div>
 {% endblock %}

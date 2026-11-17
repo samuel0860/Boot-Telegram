@@ -1,4 +1,5 @@
 {% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon with context %}
 {% from "admin/_macros.html" import status, csrf with context %}
 {% block title %}Usuário {{ user.telegram_id }}{% endblock %}
 {% block content %}
@@ -16,7 +17,7 @@
       {% if user.is_blocked %}
         <input type="hidden" name="block" value="0"><button class="btn">Desbloquear usuário</button>
       {% else %}
-        <input type="hidden" name="block" value="1"><button class="btn danger">Bloquear usuário</button>
+        <input type="hidden" name="block" value="1"><button class="btn btn-danger">Bloquear usuário</button>
       {% endif %}
     </form>
   </div>
@@ -34,7 +35,7 @@
       <td>{% if s.status.value == 'active' %}
         <form method="post" action="/admin/subscriptions/{{ s.id }}/revoke" data-confirm="Encerrar este acesso? O usuário será removido dos grupos/canais.">
           {{ csrf() }}<input type="hidden" name="reason" value="encerrado pelo administrador">
-          <button class="btn small danger">Encerrar</button>
+          <button class="btn btn-sm btn-danger">Encerrar</button>
         </form>{% endif %}</td>
     </tr>
   {% else %}<tr><td colspan="7" class="empty">Sem acessos.</td></tr>{% endfor %}

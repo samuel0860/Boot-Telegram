@@ -1,8 +1,9 @@
 {% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon with context %}
 {% from "admin/_macros.html" import pagination, status as tag, csrf with context %}
 {% block title %}Assinaturas{% endblock %}
 {% block content %}
-<h1>Assinaturas e acessos</h1>
+<div class="page-header"><div><h1>Assinaturas</h1><p class="subtitle">Acessos ativos, vencidos e encerrados.</p></div><div class="page-actions"></div></div>
 <div class="filters">
   <a href="?status=active" class="chip {{ 'on' if status == 'active' }}">Ativas</a>
   <a href="?status=expired" class="chip {{ 'on' if status == 'expired' }}">Vencidas</a>
@@ -24,7 +25,7 @@
       <td>{% if s.status.value == 'active' %}
         <form method="post" action="/admin/subscriptions/{{ s.id }}/revoke" data-confirm="Encerrar este acesso?">
           {{ csrf() }}<input type="hidden" name="reason" value="encerrado pelo administrador">
-          <button class="btn small danger">Encerrar</button>
+          <button class="btn btn-sm btn-danger">Encerrar</button>
         </form>{% endif %}</td>
     </tr>
   {% else %}<tr><td colspan="8" class="empty">Nenhum registro.</td></tr>{% endfor %}

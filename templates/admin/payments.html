@@ -1,8 +1,9 @@
 {% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon with context %}
 {% from "admin/_macros.html" import pagination, status as tag, filters with context %}
 {% block title %}Transações{% endblock %}
 {% block content %}
-<h1>Histórico de transações</h1>
+<div class="page-header"><div><h1>Transações</h1><p class="subtitle">Histórico de pagamentos PIX recebidos do Mercado Pago.</p></div><div class="page-actions"></div></div>
 {{ filters('/admin/payments', status, statuses) }}
 <div class="table-wrap"><table>
   <thead><tr><th>#</th><th>Provedor / ID</th><th>Pedido</th><th>Usuário</th><th>Plano</th><th>Valor</th><th>Status</th><th>Criado</th><th>Aprovado</th></tr></thead>

@@ -7,6 +7,7 @@ Permissões:
 """
 from __future__ import annotations
 
+import json
 import re
 import unicodedata
 from datetime import timedelta
@@ -41,19 +42,25 @@ from models import (
     AdminUser,
     Category,
     ContentType,
+    OfferStatus,
     Order,
     OrderStatus,
     Payment,
     PaymentStatus,
     Plan,
     Product,
+    PromoOffer,
     Subscription,
     SubscriptionStatus,
     User,
+    WaStatus,
     WebhookEvent,
     WebhookStatus,
 )
+from services import alert_service, promo_service, settings_service, whatsapp_service
 from services.access_service import log_event, revoke_subscription, utcnow
+from services.mercadolivre import MLError
+from services.whatsapp_service import WhatsAppError
 from services.texts import brl
 
 router = APIRouter(prefix="/admin", include_in_schema=False)
@@ -194,9 +201,34 @@ def dashboard(request: Request, admin: AdminUser = Depends(current_admin), db: S
     recent = db.scalars(
         select(Order).options(selectinload(Order.user), selectinload(Order.plan)).order_by(Order.id.desc()).limit(10)
     ).all()
+    values = settings_service.get_all(db)
+    promo_cfg = settings_service.promo_config(values)
+    wa_cfg = whatsapp_service.wa_config(values)
+    active_plans = db.scalar(select(func.count(Plan.id)).where(Plan.is_active.is_(True)))
+    active_products = db.scalar(select(func.count(Product.id)).where(Product.is_active.is_(True)))
+    bot_on = alert_service.bot_online(values)
+    linked = bool(alert_service.admin_ids(values))
+    # Primeiros passos: (feito?, título, descrição, link, texto do link, opcional?)
+    setup = [
+        (bot_on, "Bot do Telegram no ar", "O bot responde ao /start e executa as tarefas automáticas.",
+         None, None, False),
+        (linked, "Vincular o seu Telegram", "Receba alertas, o resumo diário e poste ofertas colando links no bot.",
+         "/admin/account", "Vincular", False),
+        (active_plans > 0 and active_products > 0, "Planos e conteúdos",
+         "Cadastre o que você vende e o conteúdo liberado após o pagamento.", "/admin/plans", "Ver planos", False),
+        (settings.payments_configured, "Pagamentos PIX (Mercado Pago)",
+         "Coloque o MP_ACCESS_TOKEN no .env para o bot gerar cobranças.", None, None, False),
+        (promo_cfg.credentials_ok and bool(promo_cfg.channel_id), "Bot de promoções",
+         "Credenciais do Mercado Livre e o canal onde as ofertas serão postadas.", "/admin/promo", "Configurar", True),
+        (wa_cfg.ready, "Ofertas no WhatsApp", "Conecte um número e escolha os grupos.", "/admin/whatsapp",
+         "Configurar", True),
+    ]
     return render(request, "admin/dashboard.html", admin, stats=stats, recent=recent,
                   payments_configured=settings.payments_configured,
-                  webhook_configured=bool(settings.mp_webhook_secret))
+                  webhook_configured=bool(settings.mp_webhook_secret),
+                  setup=setup, setup_done=sum(1 for s in setup if s[0]), bot_online=bot_on,
+                  promo_enabled=promo_cfg.enabled, wa_enabled=wa_cfg.enabled,
+                  promo_stats=promo_service.stats())
 
 
 # --------------------------------------------------------------------------- #
@@ -733,5 +765,422 @@ def change_password(
 
 
 @router.get("/account", response_class=HTMLResponse)
-def account(request: Request, admin: AdminUser = Depends(current_admin)):
-    return render(request, "admin/account.html", admin)
+def account(request: Request, admin: AdminUser = Depends(current_admin), db: Session = Depends(get_db)):
+    values = settings_service.get_all(db)
+    return render(request, "admin/account.html", admin,
+                  linked_ids=sorted(alert_service.linked_admin_ids(values)),
+                  env_ids=sorted(settings.admin_telegram_ids),
+                  link_code=alert_service.current_link_code(values),
+                  bot_username=settings.telegram_bot_username,
+                  alerts_enabled=values.get("alerts_enabled") == "1",
+                  summary_hour=values.get("daily_summary_hour") or "21")
+
+
+@router.post("/account/telegram/code")
+def account_telegram_code(request: Request, _csrf: None = Depends(verify_csrf),
+                          admin: AdminUser = Depends(current_admin)):
+    alert_service.create_link_code(admin.id)
+    return redirect("/admin/account#telegram")
+
+
+@router.post("/account/telegram/unlink")
+def account_telegram_unlink(request: Request, telegram_id: int = Form(...), _csrf: None = Depends(verify_csrf),
+                            admin: AdminUser = Depends(require_superuser)):
+    alert_service.unlink_admin(telegram_id, admin.id)
+    flash(request, "Telegram desvinculado.")
+    return redirect("/admin/account#telegram")
+
+
+@router.post("/account/alerts")
+def account_alerts(request: Request, alerts_enabled: str = Form(""), daily_summary_hour: str = Form("21"),
+                   _csrf: None = Depends(verify_csrf), admin: AdminUser = Depends(require_superuser),
+                   db: Session = Depends(get_db)):
+    hour = daily_summary_hour if daily_summary_hour.isdigit() and 0 <= int(daily_summary_hour) <= 23 else "21"
+    settings_service.set_values(db, {"alerts_enabled": "1" if alerts_enabled == "1" else "0",
+                                     "daily_summary_hour": hour}, admin.id)
+    db.commit()
+    flash(request, "Preferências de alertas salvas.")
+    return redirect("/admin/account#telegram")
+
+
+# --------------------------------------------------------------------------- #
+# Bot de promoções (Mercado Livre)
+# --------------------------------------------------------------------------- #
+# Pode ser substituída nos testes
+promo_client_factory = promo_service.default_client_factory
+CHANNEL_RE = re.compile(r"^(@[A-Za-z][A-Za-z0-9_]{4,31}|-100\d{6,})$")
+
+
+@router.get("/promo", response_class=HTMLResponse)
+def promo_home(request: Request, admin: AdminUser = Depends(current_admin), db: Session = Depends(get_db)):
+    values = settings_service.get_all(db)
+    cfg = settings_service.promo_config(values)
+    return render(
+        request, "admin/promo.html", admin,
+        values=values, cfg=cfg, secret_mask=settings_service.mask(values["ml_secret_key"]),
+        categories=settings_service.ML_CATEGORIES,
+        selected_categories=set(cfg.categories),
+        extra_categories=", ".join(c for c in cfg.categories if c not in settings_service.ML_CATEGORIES),
+        stats=promo_service.stats(), last=promo_service.last_result(values),
+        last_run=values["promo_last_run_at"], test_results=request.session.pop("promo_test", None),
+    )
+
+
+@router.post("/promo/settings")
+def promo_save(
+    request: Request,
+    ml_app_id: str = Form("", max_length=64),
+    ml_secret_key: str = Form("", max_length=128),
+    promo_channel_id: str = Form("", max_length=64),
+    promo_mode: str = Form("auto"),
+    promo_interval_minutes: str = Form("45", max_length=5),
+    promo_max_posts_per_cycle: str = Form("3", max_length=3),
+    promo_spacing_seconds: str = Form("120", max_length=5),
+    promo_min_discount: str = Form("20", max_length=3),
+    promo_min_price: str = Form("0", max_length=12),
+    promo_max_price: str = Form("0", max_length=12),
+    promo_blocked_words: str = Form("", max_length=2000),
+    categories: list[str] = Form(default=[]),
+    extra_categories: str = Form("", max_length=500),
+    promo_keywords: str = Form("", max_length=1000),
+    promo_no_repeat_days: str = Form("7", max_length=4),
+    promo_active_hours: str = Form("", max_length=20),
+    promo_footer: str = Form("", max_length=500),
+    _csrf: None = Depends(verify_csrf),
+    admin: AdminUser = Depends(require_superuser),
+    db: Session = Depends(get_db),
+):
+    errors = []
+    app_id = ml_app_id.strip()
+    if app_id and not app_id.isdigit():
+        errors.append("O App ID do Mercado Livre é numérico (ex.: 1234567890123456).")
+    channel = promo_channel_id.strip()
+    if channel and not CHANNEL_RE.match(channel):
+        errors.append("Canal inválido: use @nomedocanal ou o ID numérico (ex.: -1001234567890).")
+    if promo_active_hours.strip() and settings_service.parse_hours(promo_active_hours) == (None, None):
+        errors.append("Horário ativo inválido: use o formato 08:00-23:00 (ou deixe vazio para 24h).")
+    all_categories = [c for c in categories if c in settings_service.ML_CATEGORIES]
+    for c in settings_service.split_list(extra_categories):
+        if not re.fullmatch(r"MLB\d+", c.upper()):
+            errors.append(f"Categoria inválida: {c} (formato MLB1234).")
+        else:
+            all_categories.append(c.upper())
+    if errors:
+        for e in errors:
+            flash(request, e, "error")
+        return redirect("/admin/promo")
+
+    values = {
+        "ml_app_id": app_id,
+        "promo_channel_id": channel,
+        "promo_mode": "manual" if promo_mode == "manual" else "auto",
+        "promo_interval_minutes": promo_interval_minutes,
+        "promo_max_posts_per_cycle": promo_max_posts_per_cycle,
+        "promo_spacing_seconds": promo_spacing_seconds,
+        "promo_min_discount": promo_min_discount,
+        "promo_min_price": promo_min_price,
+        "promo_max_price": promo_max_price,
+        "promo_blocked_words": promo_blocked_words.strip(),
+        "promo_categories": ",".join(dict.fromkeys(all_categories)),
+        "promo_keywords": promo_keywords.strip(),
+        "promo_no_repeat_days": promo_no_repeat_days,
+        "promo_active_hours": promo_active_hours.strip(),
+        "promo_footer": promo_footer.strip(),
+    }
+    if ml_secret_key.strip():  # vazio = mantém a chave atual
+        values["ml_secret_key"] = ml_secret_key.strip()
+    settings_service.set_values(db, values, admin.id)
+    audit(db, request, admin, "promo_settings_saved", secret_changed=bool(ml_secret_key.strip()),
+          channel=channel, categories=len(all_categories))
+    db.commit()
+    flash(request, "Configurações do bot de promoções salvas. O bot aplica no próximo ciclo (sem reiniciar).")
+    return redirect("/admin/promo")
+
+
+@router.post("/promo/toggle")
+def promo_toggle(request: Request, _csrf: None = Depends(verify_csrf),
+                 admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
+    values = settings_service.get_all(db)
+    cfg = settings_service.promo_config(values)
+    enable = not cfg.enabled
+    if enable and not (cfg.credentials_ok and cfg.channel_id):
+        flash(request, "Antes de ligar, preencha App ID, Secret Key e o canal.", "error")
+        return redirect("/admin/promo")
+    settings_service.set_values(db, {"promo_enabled": "1" if enable else "0"}, admin.id)
+    audit(db, request, admin, "promo_toggled", enabled=enable)
+    db.commit()
+    flash(request, "Bot de promoções LIGADO." if enable else "Bot de promoções desligado.")
+    return redirect("/admin/promo")
+
+
+@router.post("/promo/test")
+def promo_test(request: Request, _csrf: None = Depends(verify_csrf),
+               admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
+    cfg = settings_service.load_promo_config(db)
+    try:
+        with promo_client_factory(cfg) as client:
+            steps = client.test_connection((cfg.categories or ["MLB1051"])[0])
+    except MLError as exc:
+        steps = [("Autenticação (App ID + Secret Key)", False, str(exc))]
+    request.session["promo_test"] = [{"step": s, "ok": ok, "detail": d[:300]} for s, ok, d in steps]
+    return redirect("/admin/promo")
+
+
+@router.post("/promo/run")
+def promo_run(request: Request, _csrf: None = Depends(verify_csrf),
+              admin: AdminUser = Depends(require_superuser)):
+    result = promo_service.run_cycle(promo_client_factory, triggered_by=f"painel:{admin.username}")
+    kind = "error" if result.errors and not result.eligible else ("warn" if result.errors else "ok")
+    flash(request, "Busca concluída: " + result.summary(), kind)
+    return redirect("/admin/promo/offers")
+
+
+@router.get("/promo/offers", response_class=HTMLResponse)
+def promo_offers(request: Request, status: str = "new", page: int = 1,
+                 admin: AdminUser = Depends(current_admin), db: Session = Depends(get_db)):
+    stmt = select(PromoOffer)
+    if status in {s.value for s in OfferStatus}:
+        stmt = stmt.where(PromoOffer.status == OfferStatus(status))
+    else:
+        status = "all"
+    if status == "posted":
+        stmt = stmt.order_by(PromoOffer.posted_at.desc().nulls_last())
+    elif status == "queued":
+        stmt = stmt.order_by(PromoOffer.queued_at)
+    else:
+        stmt = stmt.order_by(PromoOffer.discount_pct.desc().nulls_last(), PromoOffer.id.desc())
+    offers, pager = paginate(db, stmt, page)
+    return render(request, "admin/promo_offers.html", admin, offers=offers, pager=pager, status=status,
+                  statuses=[s.value for s in OfferStatus], stats=promo_service.stats())
+
+
+def _valid_affiliate(url: str) -> str | None:
+    url = url.strip()
+    if not url:
+        return ""
+    if not url.startswith("https://") or len(url) > 500 or any(c.isspace() for c in url):
+        return None
+    return url
+
+
+@router.post("/promo/offers/{offer_id}/queue")
+def promo_offer_queue(offer_id: int, request: Request, affiliate_url: str = Form("", max_length=500),
+                      _csrf: None = Depends(verify_csrf), admin: AdminUser = Depends(current_admin)):
+    url = _valid_affiliate(affiliate_url)
+    if url is None:
+        flash(request, "Link de afiliado inválido (precisa começar com https://).", "error")
+    elif promo_service.queue_offer(offer_id, url, admin.id, client_ip(request)):
+        flash(request, "Oferta enviada para a fila — o bot publica no canal em instantes.")
+    else:
+        flash(request, "Esta oferta já está na fila.", "warn")
+    return redirect(request.headers.get("referer") or "/admin/promo/offers")
+
+
+@router.post("/promo/offers/{offer_id}/affiliate")
+def promo_offer_affiliate(offer_id: int, request: Request, affiliate_url: str = Form("", max_length=500),
+                          _csrf: None = Depends(verify_csrf), admin: AdminUser = Depends(current_admin)):
+    url = _valid_affiliate(affiliate_url)
+    if url is None:
+        flash(request, "Link de afiliado inválido (precisa começar com https://).", "error")
+    else:
+        promo_service.set_affiliate(offer_id, url)
+        flash(request, "Link de afiliado salvo.")
+    return redirect(request.headers.get("referer") or "/admin/promo/offers")
+
+
+@router.post("/promo/offers/{offer_id}/discard")
+def promo_offer_discard(offer_id: int, request: Request, _csrf: None = Depends(verify_csrf),
+                        admin: AdminUser = Depends(current_admin)):
+    promo_service.discard_offer(offer_id, admin.id, client_ip(request))
+    return redirect(request.headers.get("referer") or "/admin/promo/offers")
+
+
+@router.post("/promo/offers/{offer_id}/restore")
+def promo_offer_restore(offer_id: int, request: Request, _csrf: None = Depends(verify_csrf),
+                        admin: AdminUser = Depends(current_admin)):
+    promo_service.restore_offer(offer_id)
+    return redirect(request.headers.get("referer") or "/admin/promo/offers")
+
+
+# --------------------------------------------------------------------------- #
+# WhatsApp (Evolution API)
+# --------------------------------------------------------------------------- #
+wa_client_factory = whatsapp_service.default_client
+
+
+@router.get("/whatsapp", response_class=HTMLResponse)
+def whatsapp_home(request: Request, qr: int = 0, admin: AdminUser = Depends(current_admin),
+                  db: Session = Depends(get_db)):
+    values = settings_service.get_all(db)
+    cfg = whatsapp_service.wa_config(values)
+    state, number, qr_image, groups, error = "unknown", None, None, [], None
+    try:
+        with wa_client_factory() as client:
+            state = client.state(cfg.instance)
+            if state == "open":
+                number = client.owner_number(cfg.instance)
+                try:
+                    groups = client.groups(cfg.instance)
+                except WhatsAppError as exc:
+                    error = f"Não foi possível listar os grupos: {exc}"
+            elif qr and state in ("connecting", "close") and admin.is_superuser:
+                qr_image = client.qr_code(cfg.instance)
+    except WhatsAppError as exc:
+        error = str(exc)
+    selected = {g["id"] for g in cfg.groups}
+    return render(request, "admin/whatsapp.html", admin, cfg=cfg, state=state, number=number,
+                  qr_image=qr_image, groups=groups, selected=selected, error=error,
+                  active_hours=values.get("promo_active_hours") or "",
+                  limits=whatsapp_service.limits_status(cfg, settings_service.promo_config(values)), waiting_qr=bool(qr) and state != "open")
+
+
+@router.post("/whatsapp/connect")
+def whatsapp_connect(request: Request, _csrf: None = Depends(verify_csrf),
+                     admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
+    cfg = whatsapp_service.wa_config(settings_service.get_all(db))
+    try:
+        with wa_client_factory() as client:
+            if client.state(cfg.instance) == "missing":
+                client.create(cfg.instance)
+    except WhatsAppError as exc:
+        flash(request, str(exc), "error")
+        return redirect("/admin/whatsapp")
+    audit(db, request, admin, "whatsapp_connect_started")
+    db.commit()
+    return redirect("/admin/whatsapp?qr=1")
+
+
+@router.post("/whatsapp/logout")
+def whatsapp_logout(request: Request, _csrf: None = Depends(verify_csrf),
+                    admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
+    cfg = whatsapp_service.wa_config(settings_service.get_all(db))
+    try:
+        with wa_client_factory() as client:
+            client.logout(cfg.instance)
+        settings_service.set_values(db, {"wa_enabled": "0"}, admin.id)
+        audit(db, request, admin, "whatsapp_logout")
+        db.commit()
+        flash(request, "Número desconectado e envios pausados.")
+    except WhatsAppError as exc:
+        flash(request, str(exc), "error")
+    return redirect("/admin/whatsapp")
+
+
+@router.post("/whatsapp/groups")
+def whatsapp_groups(request: Request, group_ids: list[str] = Form(default=[]), _csrf: None = Depends(verify_csrf),
+                    admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
+    cfg = whatsapp_service.wa_config(settings_service.get_all(db))
+    ids = [g for g in dict.fromkeys(group_ids) if whatsapp_service.GROUP_JID_RE.match(g)][:20]
+    names = {}
+    try:
+        with wa_client_factory() as client:
+            names = {g["id"]: g["name"] for g in client.groups(cfg.instance)}
+    except WhatsAppError:
+        names = {g["id"]: g["name"] for g in cfg.groups}
+    chosen = [{"id": i, "name": names.get(i, i)} for i in ids if i in names]
+    settings_service.set_values(db, {"wa_groups": json.dumps(chosen, ensure_ascii=False)}, admin.id)
+    audit(db, request, admin, "whatsapp_groups_saved", groups=len(chosen))
+    db.commit()
+    flash(request, f"{len(chosen)} grupo(s) selecionado(s) para receber as ofertas.")
+    return redirect("/admin/whatsapp")
+
+
+@router.post("/whatsapp/settings")
+def whatsapp_settings(
+    request: Request,
+    wa_warmup_days: str = Form("7", max_length=3),
+    wa_warmup_per_day: str = Form("5", max_length=3),
+    wa_max_per_window: str = Form("5", max_length=3),
+    wa_window_hours: str = Form("4", max_length=3),
+    wa_max_per_day: str = Form("20", max_length=3),
+    wa_group_delay_seconds: str = Form("10", max_length=4),
+    wa_max_age_hours: str = Form("6", max_length=3),
+    _csrf: None = Depends(verify_csrf),
+    admin: AdminUser = Depends(require_superuser),
+    db: Session = Depends(get_db),
+):
+    raw = {"wa_warmup_days": wa_warmup_days, "wa_warmup_per_day": wa_warmup_per_day,
+           "wa_max_per_window": wa_max_per_window, "wa_window_hours": wa_window_hours,
+           "wa_max_per_day": wa_max_per_day, "wa_group_delay_seconds": wa_group_delay_seconds,
+           "wa_max_age_hours": wa_max_age_hours}
+    cfg = whatsapp_service.wa_config(raw)  # aplica os limites mínimos/máximos de segurança
+    settings_service.set_values(db, {
+        "wa_warmup_days": str(cfg.warmup_days), "wa_warmup_per_day": str(cfg.warmup_per_day),
+        "wa_max_per_window": str(cfg.max_per_window), "wa_window_hours": str(cfg.window_hours),
+        "wa_max_per_day": str(cfg.max_per_day), "wa_group_delay_seconds": str(cfg.group_delay_seconds),
+        "wa_max_age_hours": str(cfg.max_age_hours),
+    }, admin.id)
+    audit(db, request, admin, "whatsapp_limits_saved")
+    db.commit()
+    flash(request, "Ritmo de envio salvo.")
+    return redirect("/admin/whatsapp")
+
+
+@router.post("/whatsapp/warmup/reset")
+def whatsapp_warmup_reset(request: Request, _csrf: None = Depends(verify_csrf),
+                          admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
+    settings_service.set_values(db, {"wa_started_at": utcnow().isoformat()}, admin.id)
+    audit(db, request, admin, "whatsapp_warmup_reset")
+    db.commit()
+    flash(request, "Aquecimento reiniciado a partir de hoje.")
+    return redirect("/admin/whatsapp")
+
+
+@router.post("/whatsapp/toggle")
+def whatsapp_toggle(request: Request, _csrf: None = Depends(verify_csrf),
+                    admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
+    cfg = whatsapp_service.wa_config(settings_service.get_all(db))
+    enable = not cfg.enabled
+    if enable and not cfg.groups:
+        flash(request, "Selecione pelo menos um grupo antes de ativar os envios.", "error")
+        return redirect("/admin/whatsapp")
+    values = {"wa_enabled": "1" if enable else "0"}
+    if enable and not cfg.started_at:
+        values["wa_started_at"] = utcnow().isoformat()  # o aquecimento começa na 1ª ativação
+    settings_service.set_values(db, values, admin.id)
+    audit(db, request, admin, "whatsapp_toggled", enabled=enable)
+    db.commit()
+    flash(request, "Envios para o WhatsApp ativados." if enable else "Envios para o WhatsApp pausados.")
+    return redirect("/admin/whatsapp")
+
+
+@router.post("/whatsapp/test")
+def whatsapp_test(request: Request, group_id: str = Form(...), _csrf: None = Depends(verify_csrf),
+                  admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
+    cfg = whatsapp_service.wa_config(settings_service.get_all(db))
+    group = next((g for g in cfg.groups if g["id"] == group_id), None)
+    if group is None:
+        flash(request, "Escolha um dos grupos selecionados.", "error")
+        return redirect("/admin/whatsapp")
+    try:
+        with wa_client_factory() as client:
+            client.send_text(cfg.instance, group["id"], "Teste de conexão do bot de ofertas: tudo certo por aqui.")
+        flash(request, f"Mensagem de teste enviada para \"{group['name']}\".")
+    except WhatsAppError as exc:
+        flash(request, f"Falha no envio: {exc}", "error")
+    return redirect("/admin/whatsapp")
+
+
+@router.post("/promo/offers/{offer_id}/whatsapp")
+def promo_offer_whatsapp(offer_id: int, request: Request, affiliate_url: str = Form("", max_length=500),
+                         _csrf: None = Depends(verify_csrf),
+                         admin: AdminUser = Depends(current_admin), db: Session = Depends(get_db)):
+    offer = db.get(PromoOffer, offer_id, with_for_update=True)
+    if offer is None:
+        raise HTTPException(404)
+    url = _valid_affiliate(affiliate_url)
+    if url is None:
+        flash(request, "Link de afiliado inválido (precisa começar com https://).", "error")
+        return redirect(request.headers.get("referer") or "/admin/promo/offers")
+    if url:
+        offer.affiliate_url = url
+    values = settings_service.get_all(db)
+    if not whatsapp_service.wa_config(values).ready:
+        flash(request, "Ative os envios e selecione grupos na página WhatsApp primeiro.", "error")
+    else:
+        offer.wa_status = WaStatus.NONE
+        whatsapp_service.mark_pending(db, offer, values)
+        audit(db, request, admin, "whatsapp_offer_queued", offer_id=offer.id)
+        db.commit()
+        flash(request, "Oferta na fila do WhatsApp. Ela sai respeitando os limites de envio.")
+    return redirect(request.headers.get("referer") or "/admin/promo/offers")
