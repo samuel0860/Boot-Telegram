@@ -45,6 +45,7 @@ services:
     networks: [internal]
 
   backend:
+    build: .
     image: telegram_vendas_app:latest
     container_name: telegram_backend
     command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers", "--forwarded-allow-ips", "*", "--workers", "2"]
@@ -67,6 +68,7 @@ services:
     networks: [internal]
 
   telegram_bot:
+    build: .
     image: telegram_vendas_app:latest
     container_name: telegram_bot
     command: ["python", "bot.py"]
