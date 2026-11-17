@@ -1,35 +1,79 @@
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import csrf with context %}
+{% from "admin/_macros.html" import csrf, page_header with context %}
+{% from "admin/_icons.html" import icon with context %}
 {% block title %}{{ 'Editar' if plan else 'Novo' }} plano{% endblock %}
 {% block content %}
-<h1>{{ 'Editar plano: ' ~ plan.name if plan else 'Novo plano' }}</h1>
-{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
-<form method="post" action="/admin/plans/save" class="form card">
+{% call page_header('Editar plano' if plan else 'Novo plano', 'É o que aparece no bot como opção de compra.') %}
+  <a class="btn btn-secondary" href="/admin/plans">Voltar</a>
+{% endcall %}
+{% if error %}<div class="alert alert-error">{{ icon('alert') }}<span>{{ error }}</span></div>{% endif %}
+
+<form method="post" action="/admin/plans/save" class="form layout-2col">
   {{ csrf() }}
   <input type="hidden" name="plan_id" value="{{ plan.id if plan else '' }}">
-  <div class="grid2">
-    <label>Nome* <input name="name" value="{{ form.name }}" required maxlength="100"></label>
-    <label>Slug <input name="slug" value="{{ form.slug }}" maxlength="100" placeholder="gerado a partir do nome"></label>
-    <label>Preço (R$)* <input name="price" value="{{ form.price }}" required inputmode="decimal" placeholder="9,90"></label>
-    <label>Tipo de acesso*
-      <select name="access_type">
-        <option value="one_time" {{ 'selected' if form.access_type == 'one_time' }}>Pack individual (pagamento único)</option>
-        <option value="subscription" {{ 'selected' if form.access_type == 'subscription' }}>Assinatura (com validade)</option>
-      </select>
-    </label>
-    <label>Duração (dias) <input name="duration_days" value="{{ form.duration_days }}" inputmode="numeric" placeholder="vazio = vitalício (somente pack)"></label>
-    <label>Ordem de exibição <input name="sort_order" value="{{ form.sort_order }}" inputmode="numeric"></label>
-  </div>
-  <label>Descrição (mostrada no bot) <textarea name="description" rows="3" maxlength="2000">{{ form.description }}</textarea></label>
-  <label class="check-line"><input type="checkbox" name="is_active" value="1" {{ 'checked' if form.is_active }}> Oferta ativa (visível no bot)</label>
+  <div>
+    <section class="card">
+      <div class="card-header"><div class="card-icon">{{ icon('edit') }}</div>
+        <div><div class="step">Passo 1</div><h2>Nome e descrição</h2><p>Como o plano aparece para o cliente no bot.</p></div></div>
+      <label>Nome <input name="name" value="{{ form.name }}" required maxlength="100" placeholder="Ex.: Assinatura Mensal"></label>
+      <label>Descrição <small>uma frase curta sobre o que a pessoa recebe</small>
+        <textarea name="description" rows="2" maxlength="2000" placeholder="Ex.: 30 dias de acesso completo à Área VIP.">{{ form.description }}</textarea></label>
+    </section>
 
-  <fieldset>
-    <legend>Conteúdos liberados por este plano</legend>
-    {% for p in products %}
-      <label class="check-line"><input type="checkbox" name="product_ids" value="{{ p.id }}" {{ 'checked' if p.id in form.product_ids }}>
-        {{ p.name }} <small>({{ p.category.name if p.category else 'sem categoria' }} · {{ p.content_type.value }}{{ ' · inativo' if not p.is_active }})</small></label>
-    {% else %}<p class="hint">Nenhum conteúdo cadastrado. <a href="/admin/products/new">Cadastre um conteúdo</a>.</p>{% endfor %}
-  </fieldset>
-  <div class="actions"><button class="btn">Salvar</button> <a class="btn ghost" href="/admin/plans">Cancelar</a></div>
+    <section class="card">
+      <div class="card-header"><div class="card-icon">{{ icon('dollar') }}</div>
+        <div><div class="step">Passo 2</div><h2>Preço e tipo de acesso</h2><p>Pagamento único ou acesso com validade.</p></div></div>
+      <label>Preço (R$) <input name="price" value="{{ form.price }}" required inputmode="decimal" placeholder="9,90" class="input-lg"></label>
+      <div class="choice-grid">
+        <label class="choice">
+          <input type="radio" name="access_type" value="one_time" {{ 'checked' if form.access_type == 'one_time' }}>
+          <span class="choice-box">{{ icon('package') }}<b>Pack (pagamento único)</b>
+            <small>A pessoa paga uma vez. Deixe a duração vazia para acesso vitalício.</small></span>
+        </label>
+        <label class="choice">
+          <input type="radio" name="access_type" value="subscription" {{ 'checked' if form.access_type == 'subscription' }}>
+          <span class="choice-box">{{ icon('repeat') }}<b>Assinatura (com validade)</b>
+            <small>O acesso vence após os dias definidos e o bot avisa para renovar.</small></span>
+        </label>
+      </div>
+      <label>Duração do acesso (dias) <small>ex.: 7 = semana, 30 = mês · vazio = vitalício (só para pack)</small>
+        <input name="duration_days" value="{{ form.duration_days }}" inputmode="numeric" placeholder="30"></label>
+    </section>
+
+    <section class="card">
+      <div class="card-header"><div class="card-icon">{{ icon('file') }}</div>
+        <div><div class="step">Passo 3</div><h2>O que é liberado após o pagamento</h2><p>Marque os conteúdos incluídos neste plano.</p></div></div>
+      {% if products %}
+      <div class="pills">
+        {% for p in products %}
+        <label class="pill"><input type="checkbox" name="product_ids" value="{{ p.id }}" {{ 'checked' if p.id in form.product_ids }}>
+          <span>{{ p.name }}{% if not p.is_active %} <small>· inativo</small>{% endif %}</span></label>
+        {% endfor %}
+      </div>
+      {% else %}
+      <p class="hint">Nenhum conteúdo cadastrado ainda. <a href="/admin/products/new">Cadastre o primeiro conteúdo</a> e depois volte aqui.</p>
+      {% endif %}
+    </section>
+  </div>
+
+  <aside class="sticky">
+    <section class="card">
+      <h2 class="mb-3">Publicação</h2>
+      <label class="check-line"><input type="checkbox" name="is_active" value="1" {{ 'checked' if form.is_active }}> Mostrar este plano no bot</label>
+      <label>Posição na lista <small>menor aparece primeiro</small><input name="sort_order" value="{{ form.sort_order }}" inputmode="numeric"></label>
+      <details class="advanced">
+        <summary>{{ icon('sliders') }}Opções avançadas</summary>
+        <div class="form">
+          <label>Identificador (slug) <small>gerado automaticamente a partir do nome</small>
+            <input name="slug" value="{{ form.slug }}" maxlength="100" placeholder="assinatura-mensal"></label>
+        </div>
+      </details>
+      <div class="stack mt-3">
+        <button class="btn btn-lg btn-block">{{ icon('save') }}Salvar plano</button>
+        <a class="btn btn-secondary btn-block" href="/admin/plans">Cancelar</a>
+      </div>
+    </section>
+    <p class="hint">O valor dos pedidos já feitos não muda quando você altera o preço.</p>
+  </aside>
 </form>
 {% endblock %}

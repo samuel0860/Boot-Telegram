@@ -1,8 +1,9 @@
 {% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon with context %}
 {% from "admin/_macros.html" import pagination, status as tag, filters with context %}
 {% block title %}Webhooks{% endblock %}
 {% block content %}
-<h1>Eventos de webhook</h1>
+<div class="page-header"><div><h1>Webhooks</h1><p class="subtitle">Notificações recebidas do provedor de pagamentos.</p></div><div class="page-actions"></div></div>
 {{ filters('/admin/webhooks', status, statuses) }}
 <div class="table-wrap"><table>
   <thead><tr><th>#</th><th>Recebido</th><th>Provedor</th><th>Tipo</th><th>Recurso</th><th>Assinatura</th><th>Tentativas</th><th>Status</th><th>Resultado / erro</th></tr></thead>
@@ -14,7 +15,7 @@
       <td>{{ e.provider }}</td>
       <td>{{ e.event_type or '—' }}</td>
       <td><code>{{ e.resource_id or '—' }}</code></td>
-      <td>{{ '✅' if e.signature_valid else '❌' }}</td>
+      <td>{% if e.signature_valid %}<span class="badge badge-ok"><span class="dot"></span>Válida</span>{% else %}<span class="badge badge-danger"><span class="dot"></span>Inválida</span>{% endif %}</td>
       <td>{{ e.attempts }}</td>
       <td>{{ tag(e.status.value) }}</td>
       <td>{{ e.result or '' }}{% if e.error %}<span class="err">{{ e.error }}</span>{% endif %}</td>

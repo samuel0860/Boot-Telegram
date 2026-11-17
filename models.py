@@ -414,3 +414,86 @@ class AdminUser(TimestampMixin, Base):
     failed_login_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+# --------------------------------------------------------------------------- #
+# Configurações editáveis pelo painel + bot de promoções (Mercado Livre)
+# --------------------------------------------------------------------------- #
+class AppSetting(Base):
+    """Configurações chave/valor editadas no painel. Segredos ficam criptografados."""
+
+    __tablename__ = "app_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str | None] = mapped_column(Text)
+    is_secret: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    updated_by_admin_id: Mapped[int | None] = mapped_column(ForeignKey("admin_users.id", ondelete="SET NULL"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class OfferStatus(str, enum.Enum):
+    NEW = "new"              # coletada, aguardando (aprovação manual ou próximo ciclo)
+    QUEUED = "queued"        # na fila para o bot publicar no canal
+    POSTED = "posted"
+    DISCARDED = "discarded"
+    FAILED = "failed"
+
+
+class WaStatus(str, enum.Enum):
+    NONE = "none"          # não vai para o WhatsApp
+    PENDING = "pending"    # aguardando os limites de envio
+    SENT = "sent"
+    FAILED = "failed"
+    SKIPPED = "skipped"    # expirou na fila (preço poderia estar desatualizado)
+
+
+class PromoOffer(TimestampMixin, Base):
+    """Ofertas coletadas na API do Mercado Livre para publicar no canal."""
+
+    __tablename__ = "promo_offers"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    platform: Mapped[str] = mapped_column(String(32), nullable=False)
+    external_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    product_url: Mapped[str] = mapped_column(Text, nullable=False)
+    affiliate_url: Mapped[str | None] = mapped_column(Text)
+    image_url: Mapped[str | None] = mapped_column(Text)
+    price: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    original_price: Mapped[Decimal | None] = mapped_column(MONEY)
+    discount_pct: Mapped[int | None] = mapped_column(Integer)
+    free_shipping: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    category_id: Mapped[str | None] = mapped_column(String(32))
+    source: Mapped[str | None] = mapped_column(String(100))
+    status: Mapped[OfferStatus] = mapped_column(
+        _enum(OfferStatus, "offer_status"), nullable=False, default=OfferStatus.NEW
+    )
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    telegram_chat_id: Mapped[str | None] = mapped_column(String(64))
+    telegram_message_id: Mapped[int | None] = mapped_column(BigInteger)
+    error: Mapped[str | None] = mapped_column(Text)
+    # WhatsApp
+    wa_status: Mapped[WaStatus] = mapped_column(
+        _enum(WaStatus, "wa_status"), nullable=False, default=WaStatus.NONE, server_default=WaStatus.NONE.value
+    )
+    wa_queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    wa_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    wa_error: Mapped[str | None] = mapped_column(Text)
+
+    __table_args__ = (
+        UniqueConstraint("platform", "external_id", name="uq_promo_offers_platform_external_id"),
+        Index("ix_promo_offers_wa_status_wa_queued_at", "wa_status", "wa_queued_at"),
+        Index("ix_promo_offers_wa_sent_at", "wa_sent_at"),
+        CheckConstraint("price > 0", name="price_positive"),
+        Index("ix_promo_offers_status_discount_pct", "status", "discount_pct"),
+        Index("ix_promo_offers_status_queued_at", "status", "queued_at"),
+        Index("ix_promo_offers_posted_at", "posted_at"),
+    )
+
+    @property
+    def link(self) -> str:
+        return self.affiliate_url or self.product_url

@@ -17,3 +17,9 @@ backups/*
 # Editores
 .vscode/
 .idea/
+
+# Prints gerados localmente
+prints-painel/
+
+# Senhas e acessos (gerado localmente — nunca enviar)
+ACESSOS.md

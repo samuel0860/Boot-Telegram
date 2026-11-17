@@ -1,8 +1,9 @@
 {% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon with context %}
 {% from "admin/_macros.html" import csrf with context %}
 {% block title %}Administradores{% endblock %}
 {% block content %}
-<h1>Administradores</h1>
+<div class="page-header"><div><h1>Administradores</h1><p class="subtitle">Contas com acesso ao painel e suas permissões.</p></div><div class="page-actions"></div></div>
 <div class="table-wrap"><table>
   <thead><tr><th>#</th><th>Usuário</th><th>E-mail</th><th>Perfil</th><th>Último login</th><th>Status</th><th></th></tr></thead>
   <tbody>
@@ -11,9 +12,9 @@
       <td>{{ a.id }}</td><td>{{ a.username }}</td><td>{{ a.email or '—' }}</td>
       <td>{{ 'Superusuário' if a.is_superuser else 'Operador' }}</td>
       <td>{{ a.last_login_at|dt }}</td>
-      <td>{% if a.is_active %}<span class="tag tag-active">ativo</span>{% else %}<span class="tag tag-cancelled">inativo</span>{% endif %}</td>
+      <td>{% if a.is_active %}<span class="badge badge-ok"><span class="dot"></span>Ativo</span>{% else %}<span class="badge badge-muted"><span class="dot"></span>Inativo</span>{% endif %}</td>
       <td>{% if a.id != admin.id %}<form method="post" action="/admin/admins/{{ a.id }}/toggle" class="inline">{{ csrf() }}
-        <button class="btn small {{ 'danger' if a.is_active }}">{{ 'Desativar' if a.is_active else 'Ativar' }}</button></form>{% endif %}</td>
+        <button class="btn btn-sm {{ 'btn-danger' if a.is_active }}">{{ 'Desativar' if a.is_active else 'Ativar' }}</button></form>{% endif %}</td>
     </tr>
   {% endfor %}
   </tbody>

@@ -51,7 +51,7 @@ async def security_headers(request: Request, call_next):
     if not request.url.path.startswith(("/docs", "/openapi.json")):
         response.headers.setdefault(
             "Content-Security-Policy",
-            "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
+            "default-src 'self'; img-src 'self' data: https://*.mlstatic.com; style-src 'self'; script-src 'self'; "
             "frame-ancestors 'none'; form-action 'self'; base-uri 'self'",
         )
     if settings.is_production:

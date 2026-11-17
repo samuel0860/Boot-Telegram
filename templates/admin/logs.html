@@ -1,8 +1,9 @@
 {% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon with context %}
 {% from "admin/_macros.html" import pagination, filters with context %}
 {% block title %}Histórico{% endblock %}
 {% block content %}
-<h1>Histórico de acessos e eventos</h1>
+<div class="page-header"><div><h1>Histórico</h1><p class="subtitle">Registro de liberações, acessos e ações administrativas.</p></div><div class="page-actions"></div></div>
 {{ filters('/admin/logs', action, actions, 'action') }}
 <div class="table-wrap"><table>
   <thead><tr><th>Data</th><th>Ação</th><th>Usuário</th><th>Admin</th><th>Pedido</th><th>IP</th><th>Detalhes</th></tr></thead>

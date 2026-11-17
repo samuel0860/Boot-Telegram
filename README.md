@@ -324,3 +324,52 @@ Cobrem: cadastro sem duplicidade, checkout e reaproveitamento de PIX, clique em 
 | `admin_users` | Administradores | username/e-mail UNIQUE, hash Argon2, bloqueio por tentativas |
 
 Todas as tabelas têm PK, FKs com integridade referencial, índices para as consultas frequentes e `created_at`/`updated_at` (`TIMESTAMPTZ`, UTC).
+
+## 16. Bot de promoções (Mercado Livre → canal do Telegram)
+
+O mesmo bot também busca ofertas no Mercado Livre e publica num canal do Telegram, com foto, preço "de/por", desconto e botão **🛒 Ver oferta**. Tudo é configurado no painel em **🔥 Promoções** (`/admin/promo`), sem editar arquivos nem reiniciar.
+
+### Configuração (uma vez)
+1. **Credenciais da API:** acesse <https://developers.mercadolivre.com.br/devcenter> → **Criar aplicação** (nome, descrição e uma URL de redirect qualquer com https, ex.: `https://seudominio.com.br`). Copie o **App ID** e a **Secret Key**.
+2. **Canal:** crie um canal no Telegram e adicione o bot como **administrador** com permissão de **Publicar mensagens**.
+   - Canal público: use `@nomedocanal`.
+   - Canal privado: mande `/id` ao bot, coloque seu ID em `ADMIN_TELEGRAM_IDS` no `.env`, reinicie o bot e **encaminhe um post do canal para o bot**. Ele responde com o ID (`-100...`).
+3. No painel → **🔥 Promoções**: cole App ID, Secret Key e o canal, escolha categorias e/ou palavras-chave, o desconto mínimo, a frequência e o horário → **Salvar**.
+4. Clique em **🔌 Testar conexão** (mostra cada etapa: token, mais vendidos, busca e preço) e depois em **🔎 Buscar ofertas agora**.
+5. Clique em **▶ Ligar bot**.
+
+### Como funciona
+- A cada *N* minutos (dentro do horário ativo), o bot busca os **mais vendidos** das categorias escolhidas e/ou faz uma **busca no catálogo** pelas palavras-chave. Tudo vem da API oficial (`client_credentials`), e o token é renovado automaticamente.
+- Calcula o desconto (preço atual × preço original), aplica os filtros (desconto mínimo, faixa de preço, palavras bloqueadas) e não repete o mesmo produto dentro do prazo configurado.
+- **Modo automático:** as melhores ofertas (maior desconto) entram na fila e são publicadas respeitando o intervalo entre posts. **Modo manual:** as ofertas ficam em **Ofertas → Aguardando**, e você escolhe quais postar.
+- A Secret Key fica **criptografada** no banco e nunca é exibida de volta.
+
+### Links de afiliado
+O Mercado Livre **não oferece API oficial** para gerar links de afiliado. Para ganhar comissão, gere o link no **Linkbuilder** do Programa de Afiliados (<https://www.mercadolivre.com.br/afiliados/linkbuilder>), cole no campo da oferta em **Ofertas** e clique em **Postar no canal**. Sem link de afiliado, o botão leva para a página normal do produto.
+
+### Limitações conhecidas
+- A disponibilidade dos endpoints depende da política do Mercado Livre para a sua aplicação. Se algum passo do **Testar conexão** falhar, a mensagem mostra o HTTP e o motivo retornado pela API.
+- Preços mudam a todo momento: o post mostra o preço do momento da coleta.
+
+## 17. Envio das ofertas para grupos do WhatsApp
+
+As ofertas do bot de promoções também podem ir para **grupos do WhatsApp**, pelo serviço `whatsapp` do compose (**Evolution API** v2.3.7, open source). Ele conecta um número via QR Code, como o WhatsApp Web.
+
+> ⚠️ Não é a API oficial da Meta. Use um **número dedicado** (não o pessoal) e envie apenas para grupos que você administra. Envios em excesso podem levar o WhatsApp a bloquear o número.
+
+### Como ativar
+1. Painel → **WhatsApp** → **Gerar QR Code** → no celular do número dedicado: *Configurações → Aparelhos conectados → Conectar um aparelho*.
+2. Depois de conectado, marque os **grupos** que vão receber as ofertas → **Salvar grupos**.
+3. Revise os **limites anti-spam** e clique em **Ativar envios**. Para conferir, use **Enviar teste**.
+
+### Como funciona
+- Toda oferta que entra na fila do canal do Telegram entra também na fila do WhatsApp. Em **Ofertas** também há o botão **Enviar no WhatsApp** para mandar uma oferta específica.
+- O bot envia foto + texto (preço "de/por", desconto, frete e link de afiliado) para cada grupo, com pausa entre os grupos.
+- **Limites aplicados:** intervalo mínimo entre ofertas (mín. 5 min), máximo por hora (até 10) e por dia (até 60), horário ativo, e expiração das ofertas paradas na fila. Envio somente para grupos (`@g.us`), nunca para contatos individuais.
+- O serviço não publica nenhuma porta: só backend e bot acessam, pela rede interna, com a chave `EVOLUTION_API_KEY`. A sessão fica no volume `telegram_whatsapp_instances`.
+
+### Comandos úteis
+```bash
+docker compose logs -f whatsapp       # logs do gateway do WhatsApp
+docker compose restart whatsapp       # reiniciar o gateway (a sessão é mantida)
+```

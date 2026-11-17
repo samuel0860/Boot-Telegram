@@ -27,5 +27,5 @@ SIZE="$(du -h "$FILE" | cut -f1)"
 echo "Backup criado: $FILE ($SIZE)"
 
 if [[ -n "$RETENTION_DAYS" ]]; then
-  find backups -maxdepth 1 -name 'telegram_vendas_*.dump' -type f -mtime +"$RETENTION_DAYS" -print -delete
+  find backups -maxdepth 1 \( -name "telegram_vendas_*.dump" -o -name "auto_*.dump" \) -type f -mtime +"$RETENTION_DAYS" -print -delete
 fi

@@ -87,6 +87,10 @@ class Settings:
     currency: str = field(default_factory=lambda: _str("CURRENCY", "BRL").upper())
     max_orders_per_10min: int = field(default_factory=lambda: _int("MAX_ORDERS_PER_10MIN", 5))
 
+    # WhatsApp (Evolution API)
+    evolution_api_url: str = field(default_factory=lambda: _str("EVOLUTION_API_URL", "http://localhost:8080").rstrip("/"))
+    evolution_api_key: str = field(default_factory=lambda: _str("EVOLUTION_API_KEY"))
+
     # Painel administrativo
     session_max_age_seconds: int = field(default_factory=lambda: _int("SESSION_MAX_AGE_SECONDS", 8 * 3600))
     admin_max_failed_logins: int = field(default_factory=lambda: _int("ADMIN_MAX_FAILED_LOGINS", 5))

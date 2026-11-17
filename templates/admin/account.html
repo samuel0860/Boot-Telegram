@@ -1,16 +1,112 @@
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import csrf with context %}
+{% from "admin/_macros.html" import csrf, page_header with context %}
+{% from "admin/_icons.html" import icon with context %}
 {% block title %}Minha conta{% endblock %}
 {% block content %}
-<h1>Minha conta</h1>
-<div class="card">
-  <p><b>Usuário:</b> {{ admin.username }} · <b>Perfil:</b> {{ 'Superusuário' if admin.is_superuser else 'Operador' }}</p>
-  <p><b>Último login:</b> {{ admin.last_login_at|dt }}</p>
+{% call page_header('Minha conta', 'Seu acesso ao painel, o Telegram vinculado e as preferências de alertas.') %}{% endcall %}
+
+<div class="layout-2col">
+<div>
+  {# ---------------- Telegram ---------------- #}
+  <section class="card" id="telegram">
+    <div class="card-header">
+      <div class="card-icon">{{ icon('send') }}</div>
+      <div><h2>Conectar meu Telegram</h2>
+        <p>Com o Telegram vinculado você recebe <b>alertas</b> e o <b>resumo diário</b>, e pode postar ofertas
+          <b>colando links do Mercado Livre</b> direto na conversa com o bot.</p></div>
+    </div>
+
+    {% if linked_ids or env_ids %}
+      <div class="alert alert-ok">{{ icon('check') }}<span>
+        {{ (linked_ids|length + env_ids|length) }} Telegram vinculado{{ 's' if (linked_ids|length + env_ids|length) > 1 }} ao painel.</span></div>
+      <ul class="today-list mb-3">
+        {% for tid in linked_ids %}
+        <li><span>ID {{ tid }}</span>
+          {% if admin.is_superuser %}
+          <form method="post" action="/admin/account/telegram/unlink" data-confirm="Desvincular este Telegram?">{{ csrf() }}
+            <input type="hidden" name="telegram_id" value="{{ tid }}"><button class="btn btn-sm btn-secondary">Desvincular</button></form>
+          {% endif %}</li>
+        {% endfor %}
+        {% for tid in env_ids %}<li><span>ID {{ tid }}</span><small class="hint">definido no .env</small></li>{% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if link_code %}
+      <ol class="steps-list big-steps">
+        <li>Abra o bot no Telegram{% if bot_username %}: <a href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener"><b>@{{ bot_username }}</b></a>{% endif %}.</li>
+        <li>Envie exatamente esta mensagem:
+          <div class="code-box">/vincular {{ link_code.code }}</div></li>
+        <li>O bot responde “Telegram vinculado”. Depois, recarregue esta página.</li>
+      </ol>
+      <p class="hint mt-3">{{ icon('clock') }} O código vale por 15 minutos.</p>
+    {% else %}
+      <form method="post" action="/admin/account/telegram/code">{{ csrf() }}
+        <button class="btn">{{ icon('link') }}{{ 'Vincular outro Telegram' if linked_ids or env_ids else 'Gerar código de vínculo' }}</button>
+      </form>
+    {% endif %}
+  </section>
+
+  {# ---------------- Alertas ---------------- #}
+  {% if admin.is_superuser %}
+  <section class="card">
+    <div class="card-header">
+      <div class="card-icon">{{ icon('alert') }}</div>
+      <div><h2>Alertas e resumo diário</h2>
+        <p>O bot avisa no seu Telegram quando algo precisa de atenção, sem repetir o mesmo aviso por 6 horas.</p></div>
+    </div>
+    <ul class="checklist mb-3">
+      <li>{{ icon('phone', 'no') }}<span>WhatsApp desconectado (envios parados)</span></li>
+      <li>{{ icon('search', 'no') }}<span>Falha ao buscar ofertas no Mercado Livre</span></li>
+      <li>{{ icon('package', 'no') }}<span>Pedido pago sem entrega há mais de 10 minutos</span></li>
+      <li>{{ icon('activity', 'no') }}<span>Webhooks de pagamento falhando</span></li>
+    </ul>
+    <form method="post" action="/admin/account/alerts" class="form">{{ csrf() }}
+      <div class="grid2">
+        <label class="check-line"><input type="checkbox" name="alerts_enabled" value="1" {{ 'checked' if alerts_enabled }}> Enviar alertas e resumo diário</label>
+        <label>Horário do resumo diário <small>hora cheia, 0 a 23</small>
+          <input name="daily_summary_hour" value="{{ summary_hour }}" inputmode="numeric" maxlength="2"></label>
+      </div>
+      <button class="btn btn-secondary">{{ icon('save') }}Salvar preferências</button>
+    </form>
+  </section>
+  {% endif %}
+
+  {# ---------------- Senha ---------------- #}
+  <section class="card">
+    <div class="card-header">
+      <div class="card-icon">{{ icon('lock') }}</div>
+      <div><h2>Trocar senha</h2><p>Use pelo menos 10 caracteres, misturando letras e números.</p></div>
+    </div>
+    <form method="post" action="/admin/password" class="form">{{ csrf() }}
+      <div class="grid2">
+        <label>Senha atual <input name="current_password" type="password" required autocomplete="current-password"></label>
+        <label>Nova senha <input name="new_password" type="password" required minlength="10" autocomplete="new-password"></label>
+      </div>
+      <button class="btn">{{ icon('save') }}Alterar senha</button>
+    </form>
+  </section>
 </div>
-<h2>Alterar senha</h2>
-<form method="post" action="/admin/password" class="form card">{{ csrf() }}
-  <label>Senha atual <input name="current_password" type="password" required autocomplete="current-password"></label>
-  <label>Nova senha (mín. 10 caracteres) <input name="new_password" type="password" required minlength="10" autocomplete="new-password"></label>
-  <div class="actions"><button class="btn">Alterar senha</button></div>
-</form>
+
+<aside class="sticky">
+  <section class="card">
+    <div class="status-hero">
+      <span class="avatar">{{ admin.username[:1]|upper }}</span>
+      <div><b>{{ admin.username }}</b><small>{{ 'Superusuário' if admin.is_superuser else 'Operador' }}</small></div>
+    </div>
+    <ul class="today-list">
+      <li><span>Último login</span><b>{{ admin.last_login_at|dt }}</b></li>
+      <li><span>E-mail</span><b>{{ admin.email or '—' }}</b></li>
+    </ul>
+  </section>
+  <section class="card">
+    <h2 class="mb-3">Comandos do bot para você</h2>
+    <ul class="today-list">
+      <li><span><code>/status</code></span><b>saúde do sistema</b></li>
+      <li><span><code>/resumo</code></span><b>números de hoje</b></li>
+      <li><span>colar link</span><b>monta o post</b></li>
+      <li><span>encaminhar post</span><b>ID do canal</b></li>
+    </ul>
+  </section>
+</aside>
+</div>
 {% endblock %}

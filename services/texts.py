@@ -14,7 +14,7 @@ TZ = ZoneInfo(settings.display_timezone)
 def brl(value: Decimal) -> str:
     """Formata Decimal como moeda brasileira: 1234.5 -> 'R$ 1.234,50'."""
     formatted = f"{value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-    return f"R$ {formatted}"
+    return f"R$\u00a0{formatted}"  # espaço não separável: o valor nunca quebra linha
 
 
 def fmt_dt(value: datetime | None) -> str:

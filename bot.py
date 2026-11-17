@@ -35,7 +35,19 @@ from config import ConfigError, configure_logging, settings
 from database import check_connection, session_scope
 from models import AccessType, OrderStatus
 from payments import PaymentProviderError, get_payment_client
-from services import access_service, catalog_service, payment_service, telegram_service, texts, user_service
+from services import (
+    access_service,
+    alert_service,
+    converter_service,
+    catalog_service,
+    payment_service,
+    promo_service,
+    settings_service,
+    telegram_service,
+    texts,
+    user_service,
+    whatsapp_service,
+)
 
 logger = logging.getLogger("bot")
 
@@ -334,7 +346,7 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
     data = query.data or ""
     action, _, arg = data.partition(":")
     # check/resend podem responder com alerta (cooldown); os demais respondem já.
-    if action not in ("check", "resend"):
+    if action not in ("check", "resend", "conv"):
         await query.answer()
     if action == "menu" and arg in MENU_ACTIONS:
         await MENU_ACTIONS[arg](update, context)
@@ -346,6 +358,8 @@ async def on_callback(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         await cancel_order(update, context, arg)
     elif action == "resend" and arg.isdigit():
         await resend_content(update, context, int(arg))
+    elif action == "conv":
+        await on_converter_action(update, context, arg)
     if action in ("check", "resend"):
         try:
             await query.answer()
@@ -374,14 +388,28 @@ async def fallback_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 # --------------------------------------------------------------------------- #
-# Ferramentas para administradores (IDs em ADMIN_TELEGRAM_IDS)
+# Ferramentas para administradores
+# (IDs vinculados pelo painel com /vincular, ou em ADMIN_TELEGRAM_IDS no .env)
 # --------------------------------------------------------------------------- #
-def is_admin(update: Update) -> bool:
-    return update.effective_user is not None and update.effective_user.id in settings.admin_telegram_ids
+_ADMIN_CACHE: dict[str, object] = {"ids": set(), "at": 0.0}
+
+
+async def get_admin_ids(force: bool = False) -> set[int]:
+    if force or time.monotonic() - float(_ADMIN_CACHE["at"]) > 30:
+        _ADMIN_CACHE["ids"] = await run_db(alert_service.admin_ids)
+        _ADMIN_CACHE["at"] = time.monotonic()
+    return _ADMIN_CACHE["ids"]  # type: ignore[return-value]
+
+
+async def is_admin(update: Update) -> bool:
+    user = update.effective_user
+    return user is not None and user.id in await get_admin_ids()
 
 
 async def admin_file_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Admin envia um arquivo/foto/vídeo ao bot e recebe o file_id para cadastrar no painel."""
+    if not await is_admin(update):
+        return
     msg = update.effective_message
     if msg.document:
         kind, file_id = "file", msg.document.file_id
@@ -399,7 +427,7 @@ async def admin_file_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def admin_chat_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """/chatid — mostra o ID do grupo/canal (use dentro do grupo)."""
-    if not is_admin(update):
+    if not await is_admin(update):
         return
     chat = update.effective_chat
     await update.effective_message.reply_text(
@@ -484,6 +512,302 @@ async def job_expirations(context: ContextTypes.DEFAULT_TYPE) -> None:
         logger.exception("Erro no job de expiração")
 
 
+# --------------------------------------------------------------------------- #
+# Bot de promoções (Mercado Livre -> canal)
+# --------------------------------------------------------------------------- #
+_promo_cycle_running = False
+
+
+async def job_promotions(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Dispara o ciclo de coleta no intervalo configurado e publica a fila no canal."""
+    global _promo_cycle_running
+    try:
+        def _load():
+            with session_scope() as session:
+                values = settings_service.get_all(session)
+            return values, settings_service.promo_config(values)
+
+        values, cfg = await run_db(_load)
+        if not _promo_cycle_running and promo_service.is_cycle_due(values, cfg):
+            _promo_cycle_running = True
+
+            async def _cycle():
+                global _promo_cycle_running
+                try:
+                    await run_db(promo_service.run_cycle, triggered_by="bot")
+                except Exception:  # noqa: BLE001
+                    logger.exception("Erro no ciclo de promoções")
+                finally:
+                    _promo_cycle_running = False
+
+            context.application.create_task(_cycle(), name="promo_cycle")
+
+        job = await run_db(promo_service.claim_next_post)
+        if job is None:
+            return
+        markup = InlineKeyboardMarkup([[InlineKeyboardButton("🛒 Ver oferta", url=job.link)]])
+        target = promo_service.channel_target(job.channel_id)
+        message_id, error = None, None
+        try:
+            if job.image_url:
+                try:
+                    msg = await context.bot.send_photo(target, photo=job.image_url, caption=job.caption,
+                                                       parse_mode=ParseMode.HTML, reply_markup=markup)
+                except TelegramError as exc:
+                    if "chat not found" in str(exc).lower() or "rights" in str(exc).lower():
+                        raise
+                    msg = await context.bot.send_message(target, job.caption, parse_mode=ParseMode.HTML,
+                                                         reply_markup=markup)
+            else:
+                msg = await context.bot.send_message(target, job.caption, parse_mode=ParseMode.HTML,
+                                                     reply_markup=markup)
+            message_id = msg.message_id
+        except TelegramError as exc:
+            error = f"Telegram: {exc}"
+            logger.warning("Falha ao publicar oferta %s no canal %s: %s", job.offer_id, job.channel_id, exc)
+        await run_db(promo_service.finish_post, job.offer_id, message_id, error)
+    except Exception:  # noqa: BLE001
+        logger.exception("Erro no job de promoções")
+
+
+_wa_running = False
+
+
+async def job_whatsapp(context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Envia ofertas da fila para os grupos do WhatsApp, respeitando os limites."""
+    global _wa_running
+    if _wa_running:
+        return
+    try:
+        job, reason = await run_db(whatsapp_service.claim_next)
+    except Exception:  # noqa: BLE001
+        logger.exception("Erro ao consultar a fila do WhatsApp")
+        return
+    if job is None:
+        return
+    _wa_running = True
+
+    async def _send():
+        global _wa_running
+        try:
+            def _work():
+                import time as _t
+                with whatsapp_service.default_client() as client:
+                    return whatsapp_service.send_job(job, client, _t.sleep)
+
+            try:
+                sent, errors = await run_db(_work)
+            except whatsapp_service.WhatsAppError as exc:
+                sent, errors = [], [str(exc)]
+            await run_db(whatsapp_service.finish, job.offer_id, sent, errors)
+            if errors:
+                logger.warning("WhatsApp: oferta %s enviada a %d grupo(s), erros: %s",
+                               job.offer_id, len(sent), errors[:3])
+            else:
+                logger.info("WhatsApp: oferta %s enviada a %d grupo(s)", job.offer_id, len(sent))
+        except Exception:  # noqa: BLE001
+            logger.exception("Erro no envio para o WhatsApp")
+        finally:
+            _wa_running = False
+
+    context.application.create_task(_send(), name="whatsapp_send")
+
+
+async def cmd_id(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/id — mostra o seu ID do Telegram (use em ADMIN_TELEGRAM_IDS)."""
+    await update.effective_message.reply_text(
+        f"🆔 Seu ID do Telegram: <code>{update.effective_user.id}</code>", parse_mode=ParseMode.HTML
+    )
+
+
+async def admin_forwarded(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Admin encaminha um post do canal para o bot -> recebe o ID do canal."""
+    if not await is_admin(update):
+        await fallback_text(update, context)
+        return
+    origin = update.effective_message.forward_origin
+    chat = getattr(origin, "chat", None) or getattr(origin, "sender_chat", None)
+    if chat is None:
+        await update.effective_message.reply_text("Encaminhe uma mensagem de um CANAL para descobrir o ID dele.")
+        return
+    await update.effective_message.reply_text(
+        f"📢 Canal: <b>{texts.escape(chat.title or '')}</b>\nID: <code>{chat.id}</code>\n\n"
+        "Cole esse ID no painel → Promoções → Canal.", parse_mode=ParseMode.HTML
+    )
+
+
+# --------------------------------------------------------------------------- #
+# Vínculo do Telegram do administrador
+# --------------------------------------------------------------------------- #
+async def cmd_vincular(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """/vincular CÓDIGO — liga este Telegram ao painel (alertas, resumo e conversor)."""
+    code = context.args[0] if context.args else ""
+    user = update.effective_user
+    ok = await run_db(alert_service.redeem_link_code, code, user.id, user.full_name or "")
+    if not ok:
+        await update.effective_message.reply_text(
+            "❌ Código inválido ou expirado. Gere um novo no painel → Minha conta → Conectar meu Telegram.")
+        return
+    await get_admin_ids(force=True)
+    await update.effective_message.reply_text(
+        "✅ <b>Telegram vinculado ao painel!</b>\n\n"
+        "Agora você recebe alertas e o resumo diário aqui.\n\n"
+        "<b>Dica:</b> cole um link do Mercado Livre (meli.la ou da página do produto) nesta conversa "
+        "e eu monto o post da oferta para você publicar.\n\n"
+        "Comandos: /resumo · /status", parse_mode=ParseMode.HTML)
+
+
+async def cmd_resumo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await is_admin(update):
+        return
+    await update.effective_message.reply_text(await run_db(alert_service.daily_summary), parse_mode=ParseMode.HTML)
+
+
+async def cmd_status(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await is_admin(update):
+        return
+
+    def _status():
+        with session_scope() as session:
+            values = settings_service.get_all(session)
+        wa_state = None
+        if whatsapp_service.wa_config(values).enabled:
+            try:
+                with whatsapp_service.default_client() as c:
+                    wa_state = c.state(whatsapp_service.wa_config(values).instance)
+            except whatsapp_service.WhatsAppError:
+                wa_state = "indisponível"
+        return alert_service.detect_problems(values, wa_state), values
+
+    problems, values = await run_db(_status)
+    promo = settings_service.promo_config(values)
+    wa = whatsapp_service.wa_config(values)
+    lines = ["🩺 <b>Status</b>\n",
+             f"Bot de promoções: {'🟢 ligado' if promo.enabled else '⚪ desligado'}",
+             f"WhatsApp: {'🟢 ativo' if wa.enabled else '⚪ desligado'}",
+             f"Pagamentos PIX: {'🟢 configurado' if settings.payments_configured else '⚪ não configurado'}", ""]
+    lines += [msg for _, msg in problems] or ["✅ Nenhum problema encontrado."]
+    await update.effective_message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML)
+
+
+# --------------------------------------------------------------------------- #
+# Modo conversor: admin cola um link do Mercado Livre e recebe o post pronto
+# --------------------------------------------------------------------------- #
+def converter_keyboard(offer_id: int) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("📢 Publicar (Telegram + WhatsApp)", callback_data=f"conv:pub:{offer_id}")],
+        [InlineKeyboardButton("Só no Telegram", callback_data=f"conv:tg:{offer_id}"),
+         InlineKeyboardButton("🗑 Descartar", callback_data=f"conv:del:{offer_id}")],
+    ])
+
+
+async def on_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    if not await is_admin(update):
+        await fallback_text(update, context)
+        return
+    msg = update.effective_message
+    waiting = await msg.reply_text("🔎 Buscando o produto no Mercado Livre...")
+    try:
+        preview = await run_db(converter_service.import_link, msg.text or "",
+                               admin_telegram_id=update.effective_user.id)
+    except converter_service.ConvertError as exc:
+        await waiting.edit_text(f"⚠️ {exc}")
+        return
+    await waiting.delete()
+    caption = "👀 <b>Prévia do post</b>\n\n" + preview.caption
+    if "meli.la" not in preview.link:
+        caption += "\n\n<i>Sem link de afiliado: envie um link meli.la para ganhar comissão.</i>"
+    try:
+        if preview.image_url:
+            await msg.reply_photo(preview.image_url, caption=caption[:1024], parse_mode=ParseMode.HTML,
+                                  reply_markup=converter_keyboard(preview.offer_id))
+            return
+    except TelegramError:
+        pass
+    await msg.reply_text(caption, parse_mode=ParseMode.HTML, reply_markup=converter_keyboard(preview.offer_id),
+                         disable_web_page_preview=True)
+
+
+async def on_converter_action(update: Update, context: ContextTypes.DEFAULT_TYPE, arg: str) -> None:
+    query = update.callback_query
+    if not await is_admin(update):
+        await query.answer("Apenas administradores.", show_alert=True)
+        return
+    action, _, oid = arg.partition(":")
+    if not oid.isdigit():
+        await query.answer()
+        return
+    offer_id = int(oid)
+
+    def _do():
+        from models import PromoOffer, WaStatus
+        if action == "del":
+            promo_service.discard_offer(offer_id, None, None)
+            return "🗑 Oferta descartada."
+        promo_service.queue_offer(offer_id, None, None, None)
+        if action == "tg":
+            with session_scope() as session:
+                offer = session.get(PromoOffer, offer_id)
+                if offer and offer.wa_status == WaStatus.PENDING:
+                    offer.wa_status = WaStatus.NONE
+            return "📢 Na fila do canal do Telegram. Publica em instantes."
+        with session_scope() as session:
+            wa_on = whatsapp_service.wa_config(settings_service.get_all(session)).ready
+        return ("📢 Na fila do Telegram" + (" e do WhatsApp (respeitando o ritmo de envio)." if wa_on
+                                             else ". O WhatsApp está desligado no painel."))
+
+    result = await run_db(_do)
+    await query.answer()
+    try:
+        await query.edit_message_reply_markup(reply_markup=None)
+    except TelegramError:
+        pass
+    await update.effective_chat.send_message(result)
+
+
+# --------------------------------------------------------------------------- #
+# Alertas, resumo diário e sinal de vida
+# --------------------------------------------------------------------------- #
+_last_alert_check = 0.0
+
+
+async def job_health(context: ContextTypes.DEFAULT_TYPE) -> None:
+    global _last_alert_check
+    try:
+        await run_db(alert_service.heartbeat)
+        if time.monotonic() - _last_alert_check < 300:
+            return
+        _last_alert_check = time.monotonic()
+
+        def _check():
+            with session_scope() as session:
+                values = settings_service.get_all(session)
+            wa = whatsapp_service.wa_config(values)
+            wa_state = None
+            if wa.enabled:
+                try:
+                    with whatsapp_service.default_client() as c:
+                        wa_state = c.state(wa.instance)
+                except whatsapp_service.WhatsAppError:
+                    wa_state = "unavailable"
+            alerts = alert_service.alerts_to_send(alert_service.detect_problems(values, wa_state))
+            summary = alert_service.daily_summary() if alert_service.summary_due(values) else None
+            return alerts, summary, alert_service.admin_ids(values)
+
+        alerts, summary, admins = await run_db(_check)
+        if not admins:
+            return
+        for admin_id in admins:
+            for text in alerts:
+                await telegram_service.safe_send(context.bot, admin_id, text)
+            if summary:
+                await telegram_service.safe_send(context.bot, admin_id, summary)
+        if summary:
+            await run_db(alert_service.mark_summary_sent)
+    except Exception:  # noqa: BLE001
+        logger.exception("Erro no job de saúde/alertas")
+
+
 async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     logger.error("Erro ao processar update", exc_info=context.error)
     if isinstance(update, Update) and update.effective_chat and update.effective_chat.type == ChatType.PRIVATE:
@@ -519,14 +843,18 @@ def build_application() -> Application:
     app.add_handler(CommandHandler("meusacessos", cmd_access, filters=private))
     app.add_handler(CommandHandler("suporte", cmd_support, filters=private))
     app.add_handler(CommandHandler("chatid", admin_chat_id, filters=filters.ChatType.GROUPS | private))
+    app.add_handler(CommandHandler("id", cmd_id, filters=private))
+    app.add_handler(CommandHandler("vincular", cmd_vincular, filters=private))
+    app.add_handler(CommandHandler("resumo", cmd_resumo, filters=private))
+    app.add_handler(CommandHandler("status", cmd_status, filters=private))
     app.add_handler(MessageHandler(filters.UpdateType.CHANNEL_POST, channel_post_chat_id))
     app.add_handler(CallbackQueryHandler(on_callback))
     app.add_handler(ChatMemberHandler(on_chat_member, ChatMemberHandler.CHAT_MEMBER))
-    if settings.admin_telegram_ids:
-        admin_filter = private & filters.User(user_id=list(settings.admin_telegram_ids))
-        app.add_handler(
-            MessageHandler(admin_filter & (filters.Document.ALL | filters.PHOTO | filters.VIDEO), admin_file_id)
-        )
+    # Ferramentas de admin (a permissão é verificada dentro de cada handler)
+    app.add_handler(MessageHandler(private & filters.FORWARDED, admin_forwarded))
+    app.add_handler(MessageHandler(private & (filters.Document.ALL | filters.PHOTO | filters.VIDEO), admin_file_id))
+    app.add_handler(MessageHandler(
+        private & filters.TEXT & ~filters.COMMAND & filters.Regex(r"(?i)(meli\.la|mercadoli[vb]re\.com)"), on_link))
     app.add_handler(MessageHandler(private & filters.TEXT & ~filters.COMMAND, fallback_text))
     app.add_error_handler(on_error)
 
@@ -534,6 +862,9 @@ def build_application() -> Application:
     jq.run_repeating(job_deliveries, interval=10, first=5, name="deliveries")
     jq.run_repeating(job_reconcile, interval=120, first=30, name="reconcile")
     jq.run_repeating(job_expirations, interval=300, first=20, name="expirations")
+    jq.run_repeating(job_promotions, interval=20, first=15, name="promotions")
+    jq.run_repeating(job_whatsapp, interval=30, first=25, name="whatsapp")
+    jq.run_repeating(job_health, interval=60, first=10, name="health")
     return app
 
 

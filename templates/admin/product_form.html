@@ -1,38 +1,83 @@
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import csrf with context %}
+{% from "admin/_macros.html" import csrf, page_header with context %}
+{% from "admin/_icons.html" import icon with context %}
 {% block title %}{{ 'Editar' if product else 'Novo' }} conteúdo{% endblock %}
 {% block content %}
-<h1>{{ 'Editar: ' ~ product.name if product else 'Novo conteúdo' }}</h1>
-{% if error %}<div class="flash error">{{ error }}</div>{% endif %}
-<form method="post" action="/admin/products/save" class="form card">
+{% call page_header('Editar conteúdo' if product else 'Novo conteúdo', 'O que o cliente recebe depois de pagar: um grupo, link, arquivo ou texto.') %}
+  <a class="btn btn-secondary" href="/admin/products">Voltar</a>
+{% endcall %}
+{% if error %}<div class="alert alert-error">{{ icon('alert') }}<span>{{ error }}</span></div>{% endif %}
+
+{% set types = [
+  ('telegram_chat', 'users', 'Grupo ou canal do Telegram', 'Convite individual que vale uma vez. Quem não pagou é removido.', 'ID do grupo/canal, ex.: -1001234567890'),
+  ('link', 'link', 'Link', 'Um endereço na internet (Google Drive, site, área de membros).', 'https://...'),
+  ('file', 'file', 'Arquivo', 'PDF, ZIP ou outro arquivo enviado pelo próprio bot.', 'file_id do arquivo'),
+  ('photo', 'grid', 'Foto', 'Uma imagem enviada pelo bot.', 'file_id da foto'),
+  ('video', 'play', 'Vídeo', 'Um vídeo enviado pelo bot.', 'file_id do vídeo'),
+  ('text', 'message', 'Texto', 'Uma mensagem (instruções, cupom, senha de acesso).', 'Texto que o cliente vai receber'),
+] %}
+
+<form method="post" action="/admin/products/save" class="form layout-2col">
   {{ csrf() }}
   <input type="hidden" name="product_id" value="{{ product.id if product else '' }}">
-  <div class="grid2">
-    <label>Nome* <input name="name" value="{{ form.name }}" required maxlength="150"></label>
-    <label>Slug <input name="slug" value="{{ form.slug }}" maxlength="100" placeholder="gerado a partir do nome"></label>
-    <label>Categoria
-      <select name="category_id">
-        <option value="">— sem categoria —</option>
-        {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if form.category_id == c.id|string }}>{{ c.name }}</option>{% endfor %}
-      </select>
-    </label>
-    <label>Ordem <input name="sort_order" value="{{ form.sort_order }}" inputmode="numeric"></label>
-    <label>Tipo de conteúdo*
-      <select name="content_type">
-        {% set labels = {'telegram_chat': 'Grupo/canal privado do Telegram', 'link': 'Link externo (https)', 'file': 'Arquivo (file_id)', 'photo': 'Foto (file_id)', 'video': 'Vídeo (file_id)', 'text': 'Texto'} %}
-        {% for t in content_types %}<option value="{{ t }}" {{ 'selected' if form.content_type == t }}>{{ labels.get(t, t) }}</option>{% endfor %}
-      </select>
-    </label>
+  <div>
+    <section class="card">
+      <div class="card-header"><div class="card-icon">{{ icon('edit') }}</div>
+        <div><div class="step">Passo 1</div><h2>Nome e descrição</h2><p>Aparecem no bot em “Ver conteúdo disponível”, antes da compra.</p></div></div>
+      <label>Nome <input name="name" value="{{ form.name }}" required maxlength="150" placeholder="Ex.: Grupo VIP"></label>
+      <label>Descrição pública <small>opcional</small>
+        <textarea name="description" rows="2" maxlength="2000" placeholder="Ex.: Novidades toda semana.">{{ form.description }}</textarea></label>
+    </section>
+
+    <section class="card">
+      <div class="card-header"><div class="card-icon">{{ icon('package') }}</div>
+        <div><div class="step">Passo 2</div><h2>Tipo de conteúdo</h2><p>Escolha como o cliente vai receber.</p></div></div>
+      <div class="choice-grid three">
+        {% for value, ic, title, desc, ph in types %}
+        <label class="choice">
+          <input type="radio" name="content_type" value="{{ value }}" {{ 'checked' if form.content_type == value }}>
+          <span class="choice-box">{{ icon(ic) }}<b>{{ title }}</b><small>{{ desc }}</small></span>
+        </label>
+        {% endfor %}
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="card-header"><div class="card-icon">{{ icon('lock') }}</div>
+        <div><div class="step">Passo 3</div><h2>O conteúdo em si</h2><p>Só é enviado depois do pagamento confirmado.</p></div></div>
+      <label>Conteúdo privado
+        <textarea name="content_value" rows="4" required maxlength="4000" placeholder="Cole aqui o link, o ID do grupo, o file_id ou o texto">{{ form.content_value }}</textarea></label>
+      <div class="help-grid">
+        <div><b>{{ icon('users') }} Grupo/canal</b><p>Adicione o bot como <b>administrador</b> (convidar e banir). Envie <code>/chatid</code> no grupo para ver o ID.</p></div>
+        <div><b>{{ icon('file') }} Arquivo, foto ou vídeo</b><p>Com o seu Telegram vinculado (Minha conta), envie o arquivo ao bot: ele responde com o <code>file_id</code>.</p></div>
+        <div><b>{{ icon('link') }} Link</b><p>Precisa começar com <code>https://</code>.</p></div>
+      </div>
+    </section>
   </div>
-  <label>Descrição pública (aparece em "Ver conteúdo disponível") <textarea name="description" rows="2" maxlength="2000">{{ form.description }}</textarea></label>
-  <label>Conteúdo privado* (entregue somente após pagamento)
-    <textarea name="content_value" rows="4" required maxlength="4000">{{ form.content_value }}</textarea></label>
-  <p class="hint">
-    <b>Grupo/canal:</b> ID numérico (ex.: <code>-1001234567890</code>) — adicione o bot como administrador com permissão de convidar e banir; envie <code>/chatid</code> no grupo para obter o ID.<br>
-    <b>Arquivo/foto/vídeo:</b> envie o arquivo ao bot pelo seu Telegram (ID em ADMIN_TELEGRAM_IDS) para receber o <code>file_id</code>.<br>
-    <b>Link:</b> URL https. <b>Texto:</b> mensagem enviada ao comprador.
-  </p>
-  <label class="check-line"><input type="checkbox" name="is_active" value="1" {{ 'checked' if form.is_active }}> Ativo</label>
-  <div class="actions"><button class="btn">Salvar</button> <a class="btn ghost" href="/admin/products">Cancelar</a></div>
+
+  <aside class="sticky">
+    <section class="card">
+      <h2 class="mb-3">Organização</h2>
+      <label class="check-line"><input type="checkbox" name="is_active" value="1" {{ 'checked' if form.is_active }}> Conteúdo ativo</label>
+      <label>Categoria
+        <select name="category_id">
+          <option value="">Sem categoria</option>
+          {% for c in categories %}<option value="{{ c.id }}" {{ 'selected' if form.category_id == c.id|string }}>{{ c.name }}</option>{% endfor %}
+        </select></label>
+      <label>Posição <small>menor aparece primeiro</small><input name="sort_order" value="{{ form.sort_order }}" inputmode="numeric"></label>
+      <details class="advanced">
+        <summary>{{ icon('sliders') }}Opções avançadas</summary>
+        <div class="form">
+          <label>Identificador (slug) <small>gerado automaticamente</small>
+            <input name="slug" value="{{ form.slug }}" maxlength="100"></label>
+        </div>
+      </details>
+      <div class="stack mt-3">
+        <button class="btn btn-lg btn-block">{{ icon('save') }}Salvar conteúdo</button>
+        <a class="btn btn-secondary btn-block" href="/admin/products">Cancelar</a>
+      </div>
+    </section>
+    <p class="hint">Depois de salvar, inclua o conteúdo em um <a href="/admin/plans">plano</a> para ele ser vendido.</p>
+  </aside>
 </form>
 {% endblock %}

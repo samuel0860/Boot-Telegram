@@ -1,29 +1,42 @@
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import csrf with context %}
+{% from "admin/_icons.html" import icon with context %}
+{% from "admin/_macros.html" import csrf, page_header with context %}
 {% block title %}Conteúdos{% endblock %}
 {% block content %}
-<div class="head">
-  <h1>Conteúdos, produtos e packs</h1>
-  {% if admin.is_superuser %}<a class="btn" href="/admin/products/new">+ Novo conteúdo</a>{% endif %}
+{% call page_header('Conteúdos', 'O que o cliente recebe depois de pagar. Inclua cada conteúdo em um ou mais planos.') %}
+  {% if admin.is_superuser %}<a class="btn" href="/admin/products/new">{{ icon('plus') }}Novo conteúdo</a>{% endif %}
+{% endcall %}
+
+{% set TYPES = {'telegram_chat': ('users', 'Grupo/canal do Telegram'), 'link': ('link', 'Link'), 'file': ('file', 'Arquivo'),
+                'photo': ('grid', 'Foto'), 'video': ('play', 'Vídeo'), 'text': ('message', 'Texto')} %}
+
+{% for cat_name, items in products|groupby('category.name', default='Sem categoria') %}
+<h2 class="section-title">{{ cat_name }}</h2>
+<div class="list-card card">
+  {% for p in items %}
+  <div class="list-row {{ 'muted' if not p.is_active }}">
+    <span class="card-icon">{{ icon(TYPES.get(p.content_type.value, ('file', ''))[0]) }}</span>
+    <div class="list-main">
+      <b>{{ p.name }}</b>
+      <small class="hint">{{ TYPES.get(p.content_type.value, ('', p.content_type.value))[1] }}{% if p.description %} · {{ p.description }}{% endif %}</small>
+      <div>{% for pl in p.plans %}<span class="chip small">{{ pl.name }}</span>{% else %}<span class="err">não está em nenhum plano</span>{% endfor %}</div>
+    </div>
+    {% if p.is_active %}<span class="badge badge-ok"><span class="dot"></span>Ativo</span>{% else %}<span class="badge badge-muted"><span class="dot"></span>Inativo</span>{% endif %}
+    {% if admin.is_superuser %}
+    <div class="actions">
+      <form method="post" action="/admin/products/{{ p.id }}/toggle">{{ csrf() }}
+        <button class="btn btn-sm btn-secondary">{{ 'Desativar' if p.is_active else 'Ativar' }}</button></form>
+      <a class="btn btn-sm" href="/admin/products/{{ p.id }}/edit">{{ icon('edit') }}Editar</a>
+    </div>
+    {% endif %}
+  </div>
+  {% endfor %}
 </div>
-<div class="table-wrap"><table>
-  <thead><tr><th>Categoria</th><th>Ordem</th><th>Nome</th><th>Tipo</th><th>Planos</th><th>Status</th><th></th></tr></thead>
-  <tbody>
-  {% for p in products %}
-    <tr class="{{ 'muted' if not p.is_active }}">
-      <td>{{ p.category.name if p.category else '—' }}</td>
-      <td>{{ p.sort_order }}</td>
-      <td><b>{{ p.name }}</b><br><small>{{ p.description or '' }}</small></td>
-      <td><code>{{ p.content_type.value }}</code></td>
-      <td>{% for pl in p.plans %}<span class="chip small">{{ pl.name }}</span>{% else %}—{% endfor %}</td>
-      <td>{% if p.is_active %}<span class="tag tag-active">ativo</span>{% else %}<span class="tag tag-cancelled">inativo</span>{% endif %}</td>
-      <td class="actions">{% if admin.is_superuser %}
-        <a class="btn small ghost" href="/admin/products/{{ p.id }}/edit">Editar</a>
-        <form method="post" action="/admin/products/{{ p.id }}/toggle" class="inline">{{ csrf() }}
-          <button class="btn small {{ 'danger' if p.is_active }}">{{ 'Desativar' if p.is_active else 'Ativar' }}</button></form>
-      {% endif %}</td>
-    </tr>
-  {% else %}<tr><td colspan="7" class="empty">Nenhum conteúdo cadastrado.</td></tr>{% endfor %}
-  </tbody>
-</table></div>
+{% else %}
+<div class="card empty">
+  <p><b>Nenhum conteúdo cadastrado.</b></p>
+  <p class="hint mt-2">Cadastre o que será entregue após o pagamento: um grupo, link, arquivo ou texto.</p>
+  {% if admin.is_superuser %}<a class="btn mt-3" href="/admin/products/new">{{ icon('plus') }}Cadastrar conteúdo</a>{% endif %}
+</div>
+{% endfor %}
 {% endblock %}
