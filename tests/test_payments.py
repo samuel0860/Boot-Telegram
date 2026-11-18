@@ -18,9 +18,9 @@ from models import (
     SubscriptionStatus,
     User,
 )
-from services import access_service, payment_service
-from services.access_service import utcnow
-from services.user_service import register_telegram_user
+from sales import access_service, payment_service
+from sales.access_service import utcnow
+from sales.user_service import register_telegram_user
 
 
 def _count(model, *where):
@@ -187,7 +187,8 @@ def test_blocked_user_cannot_buy(catalog, user, fake_client):
 
 
 def test_money_is_numeric():
-    from models import Order as O, Plan
+    from models import Order as O
+    from models import Plan
 
     assert str(Plan.__table__.c.price.type) == "NUMERIC(12, 2)"
     assert str(O.__table__.c.amount.type) == "NUMERIC(12, 2)"

@@ -1,0 +1,59 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import csrf, page_header with context %}
+{% from "admin/_icons.html" import icon with context %}
+{% block title %}Bots de ofertas{% endblock %}
+{% block content %}
+{% call page_header('Bots de ofertas', 'Cada bot alimenta os seus próprios canais do Telegram e grupos do WhatsApp com ofertas do Mercado Livre e da Shopee.') %}
+  <a class="btn btn-secondary" href="/admin/offers/settings">{{ icon('key') }}Lojas e APIs</a>
+{% endcall %}
+
+{% if not worker_online %}
+<div class="alert alert-warn">{{ icon('alert') }}<span>O processo do módulo de ofertas (<code>offers_bot</code>) não está dando sinal de vida. As publicações automáticas estão paradas até ele voltar.</span></div>
+{% endif %}
+{% if not credentials_ok %}
+<div class="alert alert-info">{{ icon('info') }}<span>Falta cadastrar a conta de pelo menos uma loja (Mercado Livre e/ou Shopee). Vale para todos os bots: <a href="/admin/offers/settings">configurar agora</a>.</span></div>
+{% endif %}
+
+<div class="bot-grid">
+{% for b in bots %}
+  {%- set tg = b.targets|selectattr('channel.value', 'equalto', 'telegram')|selectattr('is_active')|list -%}
+  {%- set wa = b.targets|selectattr('channel.value', 'equalto', 'whatsapp')|selectattr('is_active')|list -%}
+  {%- set s = stats[b.id] -%}
+  <a class="card bot-card" href="/admin/offers/bots/{{ b.id }}">
+    <div class="bot-card-head">
+      <span class="status-dot {{ 'on' if b.is_active }}"></span>
+      <div><b>{{ b.name }}</b>
+        <small>{{ '@' ~ b.telegram_username if b.telegram_username else 'sem token do Telegram' }}</small></div>
+      <span class="badge {{ 'badge-ok' if b.is_active else 'badge-muted' }}"><span class="dot"></span>{{ 'Ligado' if b.is_active else 'Desligado' }}</span>
+    </div>
+    <ul class="today-list">
+      <li><span>{{ icon('send') }} Telegram</span><b>{{ tg|length }} destino{{ 's' if tg|length != 1 }}</b></li>
+      <li><span>{{ icon('phone') }} WhatsApp</span><b>{{ wa|length }} grupo{{ 's' if wa|length != 1 }}</b></li>
+      <li><span>Publicadas 24h</span><b>{{ s.posted_24h }} · WhatsApp {{ s.wa_24h }}</b></li>
+      <li><span>Na fila</span><b>{{ s.queued }}{% if s.new %} · {{ s.new }} aguardando{% endif %}</b></li>
+    </ul>
+  </a>
+{% else %}
+  <div class="card empty">
+    <p><b>Nenhum bot de ofertas ainda.</b></p>
+    <p class="hint mt-2">Crie o primeiro abaixo. Exemplo: “Ofertas Tech” para os grupos de tecnologia, “Ofertas Casa” para os de casa.</p>
+  </div>
+{% endfor %}
+</div>
+
+{% if admin.is_superuser %}
+<section class="card mt-3">
+  <div class="card-header">
+    <div class="card-icon">{{ icon('plus') }}</div>
+    <div><h2>Novo bot de ofertas</h2>
+      <p>Depois de criar, cadastre o token do Telegram (crie um bot novo no @BotFather só para ele) e/ou conecte um número de WhatsApp.</p></div>
+  </div>
+  <form method="post" action="/admin/offers/bots/create" class="row-form">{{ csrf() }}
+    <input name="name" required maxlength="80" placeholder="Nome do bot (ex.: Ofertas Tech)">
+    <button class="btn">{{ icon('plus') }}Criar bot</button>
+  </form>
+</section>
+{% endif %}
+
+<p class="hint mt-3">{{ icon('info') }} O módulo de ofertas é separado das vendas: o bot de vendas{% if sales_bot %} (@{{ sales_bot }}){% endif %} não publica ofertas, e os bots de ofertas não vendem nada.</p>
+{% endblock %}

@@ -147,11 +147,52 @@ def cmd_check(args) -> None:
 
 
 def cmd_reconcile(args) -> None:
-    from payments import get_payment_client
-    from services.payment_service import reconcile_pending_orders
+    from sales.payment_service import reconcile_pending_orders
+    from sales.payments import get_payment_client
 
     changed = reconcile_pending_orders(get_payment_client())
     print(f"Reconciliação concluída. Pedidos confirmados agora: {changed}")
+
+
+def cmd_bot_health(args) -> None:
+    """Healthcheck dos containers: falha se o sinal de vida do processo estiver parado."""
+    from core import alert_service, settings_service
+    from database import session_scope
+
+    key = alert_service.OFFERS_HEARTBEAT if args.module == "offers" else alert_service.SALES_HEARTBEAT
+    try:
+        with session_scope() as session:
+            values = settings_service.get_all(session)
+    except Exception as exc:  # noqa: BLE001
+        sys.exit(f"banco indisponível: {exc.__class__.__name__}")
+    if not alert_service.bot_online(values, key=key):
+        sys.exit(f"{args.module}: sem sinal de vida desde {values.get(key) or 'nunca'}")
+    print("ok")
+
+
+def cmd_purge(args) -> None:
+    """LGPD: apaga agora os registros técnicos antigos (o bot também faz isso sozinho a cada 6 h)."""
+    from core.retention_service import purge_old_records
+
+    r = purge_old_records()
+    print(f"Apagados: {r.logs} logs, {r.webhooks} webhooks, {r.payment_raw} respostas brutas de pagamento.")
+
+
+def cmd_reset_2fa(args) -> None:
+    """Para quem perdeu o celular: desliga a verificação em duas etapas da conta."""
+    from core.audit import log_event
+    from database import session_scope
+    from models import AdminUser
+
+    with session_scope() as session:
+        admin = session.scalar(select(AdminUser).where(func.lower(AdminUser.username) == args.username.lower()))
+        if admin is None:
+            sys.exit("Administrador não encontrado.")
+        admin.totp_enabled = False
+        admin.totp_secret = None
+        admin.totp_last_step = None
+        log_event(session, "admin_2fa_reset_cli", admin_user_id=admin.id)
+    print("Verificação em duas etapas desativada. Entre com a senha e ative de novo em Minha conta.")
 
 
 def main() -> None:
@@ -168,6 +209,16 @@ def main() -> None:
     p = sub.add_parser("set-password", help="Redefine a senha de um administrador")
     p.add_argument("--username", required=True)
     p.set_defaults(func=cmd_set_password)
+
+    p = sub.add_parser("bot-health", help="Healthcheck dos bots (usado pelo Docker)")
+    p.add_argument("module", nargs="?", choices=["sales", "offers"], default="sales")
+    p.set_defaults(func=cmd_bot_health)
+
+    sub.add_parser("purge", help="LGPD: apaga registros técnicos antigos").set_defaults(func=cmd_purge)
+
+    p = sub.add_parser("reset-2fa", help="Desativa a verificação em duas etapas de um administrador")
+    p.add_argument("--username", required=True)
+    p.set_defaults(func=cmd_reset_2fa)
 
     p = sub.add_parser("seed", help="Cria planos/categorias/conteúdos iniciais")
     p.add_argument("--file")

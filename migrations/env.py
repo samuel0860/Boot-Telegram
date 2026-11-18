@@ -4,9 +4,9 @@ from logging.config import fileConfig
 from alembic import context
 from sqlalchemy import create_engine, pool
 
+import models  # noqa: F401  (registra todas as tabelas no metadata)
 from config import settings
 from database import Base
-import models  # noqa: F401  (registra todas as tabelas no metadata)
 
 config = context.config
 if config.config_file_name is not None:

@@ -20,6 +20,12 @@
         <input type="hidden" name="block" value="1"><button class="btn btn-danger">Bloquear usuário</button>
       {% endif %}
     </form>
+    {% if admin.is_superuser %}
+    <form method="post" action="/admin/users/{{ user.id }}/anonymize" class="mt-2"
+          data-confirm="Anonimizar este cliente (LGPD)? Nome, @usuário e histórico de ações serão apagados. Pedidos e pagamentos ficam (registro financeiro). Não dá para desfazer.">
+      {{ csrf() }}<button class="btn btn-sm btn-secondary">Anonimizar (pedido LGPD)</button>
+    </form>
+    {% endif %}
   </div>
 </div>
 

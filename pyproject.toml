@@ -1,0 +1,25 @@
+[tool.ruff]
+target-version = "py312"
+line-length = 120
+extend-exclude = ["migrations/versions", ".venv"]
+
+[tool.ruff.lint]
+# E/W: estilo · F: erros reais (nome indefinido, import sobrando) · I: ordem dos imports
+# B: armadilhas comuns · UP: sintaxe moderna · S: segurança básica
+select = ["E", "W", "F", "I", "B", "UP", "S"]
+ignore = [
+  "E501",   # linhas longas: o formatador não é obrigatório neste projeto
+  "B008",   # Depends()/Form() como valor padrão é o padrão do FastAPI
+  "S101",   # assert é usado nos testes
+  "S311",   # random não é usado para segurança
+  "UP007",  # X | None já é usado; não reescrever Optional[] legado à força
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S105", "S106", "S107", "S108", "S603"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["admin", "core", "offers", "sales", "config", "database", "models"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

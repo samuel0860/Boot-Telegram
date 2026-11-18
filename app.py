@@ -5,6 +5,9 @@ Execução local:  uvicorn app:app --reload
 from __future__ import annotations
 
 import logging
+import re
+from contextlib import asynccontextmanager
+from urllib.parse import quote
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.responses import HTMLResponse, JSONResponse, PlainTextResponse, RedirectResponse
@@ -16,16 +19,25 @@ from starlette.middleware.sessions import SessionMiddleware
 from admin.auth import NotAuthenticated
 from admin.routes import router as admin_router
 from config import BASE_DIR, configure_logging, settings
+from core import error_reporter
 from database import check_connection
-from payments import PaymentClient, get_payment_client
-from services import payment_service
+from sales import payment_service
+from sales.payments import PaymentClient, get_payment_client
 
 configure_logging()
 settings.require_web()
 logger = logging.getLogger("app")
 
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    if settings.error_reports:
+        error_reporter.start_backend_thread()  # avisa os admins no Telegram quando houver erro
+    yield
+
+
 app = FastAPI(
     title="Telegram Vendas",
+    lifespan=lifespan,
     docs_url=None if settings.is_production else "/docs",
     redoc_url=None,
     openapi_url=None if settings.is_production else "/openapi.json",
@@ -51,7 +63,7 @@ async def security_headers(request: Request, call_next):
     if not request.url.path.startswith(("/docs", "/openapi.json")):
         response.headers.setdefault(
             "Content-Security-Policy",
-            "default-src 'self'; img-src 'self' data: https://*.mlstatic.com; style-src 'self'; script-src 'self'; "
+            "default-src 'self'; img-src 'self' data: https://*.mlstatic.com https://*.susercontent.com https://*.shopee.com.br; style-src 'self'; script-src 'self'; "
             "frame-ancestors 'none'; form-action 'self'; base-uri 'self'",
         )
     if settings.is_production:
@@ -71,11 +83,27 @@ async def not_authenticated_handler(request: Request, exc: NotAuthenticated):
     return RedirectResponse("/admin/login", status_code=303)
 
 
+START_PARAM_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
+
+
 @app.get("/", response_class=HTMLResponse, include_in_schema=False)
-def landing(request: Request):
+def landing(request: Request, start: str = ""):
+    # ?start=tiktok-v12 na URL da página é repassado ao bot (mede cada vídeo/campanha)
+    link = settings.telegram_link
+    if start and START_PARAM_RE.match(start) and settings.telegram_bot_username:
+        link = f"https://t.me/{quote(settings.telegram_bot_username)}?start={start}"
     return templates.TemplateResponse(
-        request, "index.html", {"telegram_link": settings.telegram_link}
+        request, "index.html",
+        {"telegram_link": link, "title": settings.landing_title, "subtitle": settings.landing_subtitle},
     )
+
+
+@app.get("/privacidade", response_class=HTMLResponse, include_in_schema=False)
+def privacy(request: Request):
+    return templates.TemplateResponse(request, "privacy.html", {
+        "contact": settings.privacy_contact or settings.support_contact,
+        "log_days": settings.log_retention_days, "webhook_days": settings.webhook_retention_days,
+    })
 
 
 @app.get("/health", include_in_schema=False)
