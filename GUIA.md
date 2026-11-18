@@ -11,7 +11,7 @@ Manual de uso do dia a dia, em linguagem simples. A parte técnica (instalação
 2. [Como acessar](#2-como-acessar)
 3. [Primeiros passos (checklist)](#3-primeiros-passos-checklist)
 4. [O painel, tela por tela](#4-o-painel-tela-por-tela)
-5. [Bots de ofertas (Mercado Livre e Shopee → Telegram)](#5-bots-de-ofertas-mercado-livre-e-shopee--telegram)
+5. [Bots de ofertas (Mercado Livre, Shopee e Amazon → Telegram)](#5-bots-de-ofertas-mercado-livre-shopee-e-amazon--telegram)
 6. [Ofertas no WhatsApp (um número por bot)](#6-ofertas-no-whatsapp-um-número-por-bot)
 7. [Postar uma oferta pelo celular (modo conversor)](#7-postar-uma-oferta-pelo-celular-modo-conversor)
 8. [Vendas pelo bot próprio (funil + PIX)](#8-vendas-pelo-bot-próprio-funil--pix)
@@ -30,7 +30,7 @@ O sistema tem **dois módulos separados**, cada um com seus bots e suas configur
 | Módulo | O que faz |
 |---|---|
 | **Vendas** (bot próprio, @lgr_ebac_bot) | Vende os **seus** produtos/serviços: mostra os planos, gera o PIX, libera o conteúdo depois do pagamento e controla a validade das assinaturas. O dinheiro cai direto na **sua conta** do gateway (hoje Mercado Pago). |
-| **Ofertas** (afiliados) | **Vários bots de ofertas**, cada um com o **próprio bot do Telegram** e o **próprio número de WhatsApp**. Cada um busca promoções no **Mercado Livre** e/ou na **Shopee** com os seus filtros e publica nos **seus** canais e grupos. |
+| **Ofertas** (afiliados) | **Vários bots de ofertas**, cada um com o **próprio bot do Telegram** e o **próprio número de WhatsApp**. Cada um busca promoções no **Mercado Livre**, na **Shopee** e/ou na **Amazon** com os seus filtros e publica nos **seus** canais e grupos. |
 
 Também fazem parte: a **página inicial** (link da bio do TikTok, que leva ao bot de vendas) e o **painel**, onde você configura e acompanha os dois módulos.
 
@@ -87,13 +87,14 @@ O **Dashboard** mostra o checklist "Primeiros passos" com o que ainda falta (cad
 - **Webhooks**: avisos de pagamento recebidos do Mercado Pago.
 - **Administradores**: criar outros acessos. *Operador* só consulta e bloqueia; *Superusuário* altera tudo.
 
-## 5. Bots de ofertas (Mercado Livre e Shopee → Telegram)
+## 5. Bots de ofertas (Mercado Livre, Shopee e Amazon → Telegram)
 
 Você pode ter **quantos bots de ofertas quiser**. Cada um tem o próprio bot do Telegram, o próprio número de WhatsApp, os próprios canais/grupos e as próprias configurações. Exemplo: *Ofertas Tech* nos grupos de tecnologia e *Ofertas Casa* nos de casa.
 
 **Uma vez só — contas das lojas** (Painel → **Lojas e APIs**):
 - **Mercado Livre:** em https://developers.mercadolivre.com.br/devcenter, clique em **Criar aplicação** (para a URL de redirect, qualquer endereço https serve). Cole o **App ID** e a **Secret Key** → **Salvar** → **Testar**.
 - **Shopee:** em https://affiliate.shopee.com.br → **Open API**, copie o **AppID** e a **Senha** → cole no painel → **Salvar** → **Testar**. Na Shopee o **link de afiliado vem pronto** da API, já com a sua comissão.
+- **Amazon:** em https://associados.amazon.com.br → **Ferramentas → Creators API → Criar credencial**, copie o **Credential ID**, o **Credential Secret** e a **versão**; o **Partner Tag** é o seu ID de associado (termina em `-20`) → **Salvar** → **Testar**. O link de afiliado também vem pronto. A Amazon só libera a API para associados com vendas qualificadas recentes.
 
 **Para cada bot de ofertas:**
 1. Painel → **Bots de ofertas** → digite o nome → **Criar bot**.
@@ -101,7 +102,7 @@ Você pode ter **quantos bots de ofertas quiser**. Cada um tem o próprio bot do
    - No Telegram, abra o **@BotFather**, mande `/newbot` e crie um bot **só para ofertas** (não use o @lgr_ebac_bot, que é o de vendas).
    - Cole o token no painel → **Salvar token**.
    - Adicione esse bot como **administrador** dos seus canais/grupos de ofertas (com permissão de publicar). Eles aparecem em **Encontrados pelo bot** → **Adicionar**. Também dá para digitar `@nomedocanal`.
-3. Aba **Busca e filtros**: marque as **lojas** (Mercado Livre e/ou Shopee), desconto mínimo, faixa de preço, palavras-chave, horário e modo (automático ou manual).
+3. Aba **Busca e filtros**: marque as **lojas** (Mercado Livre, Shopee e/ou Amazon), desconto mínimo, faixa de preço, palavras-chave, horário e modo (automático ou manual).
 4. Aba **Modelo do post**: o texto das publicações (veja abaixo).
 5. Na lateral: **Testar lojas** → **Buscar ofertas agora** → confira em **Ofertas** → **Ligar bot**.
 6. Abra o bot no Telegram e mande `/start` para receber os alertas dele.
@@ -126,7 +127,7 @@ Link: https://meli.la/33hYTSb
 
 Dá para mudar o texto usando os marcadores (`{chamada}`, `{titulo}`, `{preco}`, `{de}`, `{desconto}`, `{cupom}`, `{link}`, `{frete}`, `{rodape}`) e `*negrito*`. A prévia aparece ao lado. Sem cupom, a linha do cupom some sozinha.
 
-**Link de afiliado:** na **Shopee** é automático. O **Mercado Livre** não tem API para gerar link de afiliado; para ganhar comissão:
+**Link de afiliado:** na **Shopee** e na **Amazon** é automático. O **Mercado Livre** não tem API para gerar link de afiliado; para ganhar comissão:
 - gere o link no **Linkbuilder** do Programa de Afiliados e cole no campo da oferta, **ou**
 - use o **modo conversor** (seção 7), que é o jeito mais rápido.
 
@@ -152,7 +153,7 @@ Dá para mudar em *Ajustar ritmo (avançado)*. Trocou de chip? Use *Recomeçar a
 ## 7. Postar uma oferta pelo celular (modo conversor)
 
 Depois de vincular o seu Telegram (Minha conta):
-1. No app do Mercado Livre, gere o seu link de afiliado (`meli.la/...`), ou na Shopee copie o link do produto ou o seu link curto (`s.shopee.com.br/...`).
+1. No app do Mercado Livre, gere o seu link de afiliado (`meli.la/...`), na Shopee copie o link do produto ou o seu link curto (`s.shopee.com.br/...`), ou na Amazon o link do produto ou o seu `amzn.to`.
 2. **Cole o link na conversa com o bot de ofertas** que deve publicar (ex.: @OfertasTechBot). Se quiser, na mesma mensagem, escreva a chamada e o cupom em linhas separadas:
    ```
    https://meli.la/33hYTSb
@@ -225,7 +226,7 @@ O mesmo alerta não se repete por 6 horas. O resumo chega no horário configurad
 | Comando / ação | O que faz |
 |---|---|
 | `/status` | Situação daquele bot (destinos, fila, última busca) |
-| colar link do Mercado Livre ou da Shopee | Monta o post da oferta (aceita `chamada:` e `cupom:` em linhas abaixo do link) |
+| colar link do Mercado Livre, da Shopee ou da Amazon | Monta o post da oferta (aceita `chamada:` e `cupom:` em linhas abaixo do link) |
 | encaminhar post de um canal | Mostra o ID do canal |
 | `/vincular CÓDIGO` | Vincula o seu Telegram ao painel (funciona em qualquer bot) |
 
