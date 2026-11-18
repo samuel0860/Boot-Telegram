@@ -58,7 +58,7 @@
       </details>
       <form method="post" action="{{ base }}/queue" class="offer-form">{{ csrf() }}
         <div class="offer-fields">
-          <input name="headline" value="{{ o.headline or '' }}" placeholder="Chamada: ex. PRECIN NA 43&quot; DA PHILCO (vazio = padrão)" maxlength="120">
+          <input name="headline" value="{{ o.headline or '' }}" placeholder="Chamada: vazio = automática (produto + desconto)" maxlength="120">
           <input name="coupon" value="{{ o.coupon or '' }}" placeholder="Cupom (opcional)" maxlength="40">
           <input name="affiliate_url" value="{{ o.affiliate_url or '' }}" placeholder="Link de afiliado: https://meli.la/... (Shopee/Amazon: já vem preenchido)" maxlength="500">
         </div>

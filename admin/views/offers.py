@@ -40,7 +40,7 @@ TABS = {"geral": "Geral", "telegram": "Telegram", "whatsapp": "WhatsApp", "busca
         "post": "Modelo do post"}
 SAMPLE_POST = post_template.PostData(
     title='Smart TV Philco 43" Roku Tv Hdr10', price=Decimal("1095"), original_price=Decimal("1499"),
-    discount_pct=27, link="https://meli.la/33hYTSb", headline='PRECIN NA 43" DA PHILCO', coupon="DIADATECH",
+    discount_pct=27, link="https://meli.la/33hYTSb", coupon="DIADATECH", store="Mercado Livre",
 )
 
 

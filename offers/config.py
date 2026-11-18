@@ -45,7 +45,7 @@ DEFAULT_CONFIG: dict[str, str] = {
     "active_hours": "08:00-23:00",
     # Texto do post
     "template": "",                    # vazio = modelo padrão
-    "default_headline": "",            # vazio = chamada padrão
+    "default_headline": "",            # vazio = chamada automática (produto + desconto)
     "footer": "Link de afiliado: posso receber comissão pelas compras, sem custo extra para você.",
     # WhatsApp (número próprio do bot)
     "wa_enabled": "0",
@@ -248,7 +248,7 @@ def parse(raw: dict | None, *, enabled: bool = False, app_id: str = "", secret_k
         active_end=end,
         footer=v["footer"].strip(),
         template=v["template"].strip() or post_template.DEFAULT_TEMPLATE,
-        default_headline=v["default_headline"].strip() or post_template.DEFAULT_HEADLINE,
+        default_headline=v["default_headline"].strip(),
         wa_enabled=v["wa_enabled"] == "1",
         wa_warmup_days=_int(v["wa_warmup_days"], 7, 0, 30),
         wa_warmup_per_day=_int(v["wa_warmup_per_day"], 5, 1, 10),

@@ -13,6 +13,7 @@ Regras:
 from __future__ import annotations
 
 import re
+import zlib
 from dataclasses import dataclass, replace
 from decimal import Decimal
 from html import escape
@@ -27,10 +28,11 @@ DEFAULT_TEMPLATE = (
     "\n"
     "Link: {link}"
 )
-DEFAULT_HEADLINE = "PRECIN NO MERCADO LIVRE"
+# Vazio = chamada AUTOMÁTICA (montada com o nome do produto, o desconto e a loja)
+DEFAULT_HEADLINE = ""
 
 PLACEHOLDERS: dict[str, str] = {
-    "chamada": "Frase de impacto (definida em cada oferta; senão usa a chamada padrão)",
+    "chamada": "Frase de impacto: automática (produto + desconto), a fixa do bot ou a definida na oferta",
     "titulo": "Nome do produto",
     "preco": "Preço atual (ex.: R$1.095)",
     "de": "Preço antigo, se houver (ex.: R$1.499)",
@@ -77,10 +79,55 @@ class PostData:
     store: str = ""
 
 
+# --------------------------------------------------------------------------- #
+# Chamada automática
+# --------------------------------------------------------------------------- #
+STORE_PREP = {"Mercado Livre": "NO MERCADO LIVRE", "Shopee": "NA SHOPEE", "Amazon": "NA AMAZON"}
+# Formatos com desconto ({n} = nome curto do produto, {d} = desconto). Sem artigo antes do
+# produto (no/na), que dependeria do gênero da palavra.
+WITH_DISCOUNT = (
+    "{n} COM {d}% OFF",
+    "{d}% OFF EM {n}",
+    "BAIXOU {d}%: {n}",
+    "PRECIN: {n} COM {d}% OFF",
+    "DESPENCOU: {n} {d}% OFF",
+)
+WITHOUT_DISCOUNT = ("PRECIN {loja}", "OFERTA {loja}: {n}", "ACHADO {loja}")
+MIN_DISCOUNT_IN_HEADLINE = 5
+NAME_MAX_CHARS = 28
+_CUT = re.compile(r"\s[|\-–—/]\s|[,(\[;:|]|\s(?:com|para|c/|p/|ideal|kit de)\s", re.I)
+_TRAILING = {"de", "da", "do", "das", "dos", "e", "com", "para", "em", "a", "o", "-", "+"}
+
+
+def short_name(title: str, max_chars: int = NAME_MAX_CHARS) -> str:
+    """Nome curto do produto: o começo do título, até o primeiro separador, em poucas palavras."""
+    text = _WA_MARKUP.sub("", " ".join((title or "").split()))
+    head = _CUT.split(text, maxsplit=1)[0].strip() or text
+    words: list[str] = []
+    for word in head.split():
+        if len(" ".join([*words, word])) > max_chars or len(words) == 5:
+            break
+        words.append(word)
+    while words and words[-1].lower() in _TRAILING:
+        words.pop()
+    return " ".join(words or head.split()[:1]).upper()
+
+
+def auto_headline(data: PostData) -> str:
+    """Chamada montada sozinha. O formato varia entre produtos, mas é sempre o mesmo para o mesmo produto."""
+    name = short_name(data.title)
+    store = STORE_PREP.get(data.store, f"NA {data.store.upper()}" if data.store else "DO DIA")
+    pick = zlib.crc32(data.title.encode())
+    if data.discount_pct and data.discount_pct >= MIN_DISCOUNT_IN_HEADLINE:
+        pattern = WITH_DISCOUNT[pick % len(WITH_DISCOUNT)]
+        return pattern.format(n=name, d=data.discount_pct)
+    return WITHOUT_DISCOUNT[pick % len(WITHOUT_DISCOUNT)].format(n=name, loja=store)
+
+
 def _values(data: PostData, default_headline: str, footer: str) -> dict[str, str]:
     old = data.original_price if data.original_price and data.original_price > data.price else None
     return {
-        "chamada": (data.headline or default_headline or "").strip(),
+        "chamada": (data.headline or default_headline or "").strip() or auto_headline(data),
         "titulo": data.title.strip()[:200],
         "preco": short_brl(data.price),
         "de": short_brl(old) if old else "",

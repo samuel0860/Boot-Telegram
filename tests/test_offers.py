@@ -143,7 +143,7 @@ def test_post_caption_spacing_and_no_repeat():
     bot = make_bot()
     collector.run_cycle(bot, ml_factory())
     job = posting.claim_next_post(bot)
-    assert "🆘 <b>PRECIN NO MERCADO LIVRE</b>" in job.caption and "Por R$" in job.caption and "Link: " in job.caption
+    assert re.search(r"🆘 <b>[^<]*\d+% OFF[^<]*</b>", job.caption) and "Por R$" in job.caption and "Link: " in job.caption
     posting.finish_post(job.post_id, [{"target": "@canalteste", "message_id": 777}], [])
     assert posting.claim_next_post(bot) is None  # espaçamento entre posts
     collector.run_cycle(bot, ml_factory())       # não recoloca o mesmo produto (não repetir por N dias)

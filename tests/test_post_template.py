@@ -1,6 +1,8 @@
 """Modelo do post de ofertas (Telegram + WhatsApp)."""
 from decimal import Decimal
 
+import pytest
+
 from offers import converter, post_template
 from offers.post_template import DEFAULT_TEMPLATE, PostData, render_telegram, render_whatsapp, short_brl
 
@@ -79,3 +81,50 @@ def test_converter_reads_headline_and_coupon():
     text = 'https://meli.la/33hYTSb\nchamada: PRECIN NA 43" DA PHILCO\n⚠️ cupom: DIADATECH'
     assert converter.parse_extras(text) == ('PRECIN NA 43" DA PHILCO', "DIADATECH")
     assert converter.parse_extras("https://meli.la/abc") == (None, None)
+
+
+# --------------------------------------------------------------------------- #
+# Chamada automática
+# --------------------------------------------------------------------------- #
+from offers.post_template import WITH_DISCOUNT, auto_headline, short_name  # noqa: E402
+
+
+@pytest.mark.parametrize("title,expected", [
+    ("Echo Dot 5ª geração | Smart speaker com Alexa", "ECHO DOT 5ª GERAÇÃO"),
+    ('Smart TV Philco 43" Roku Tv Hdr10', 'SMART TV PHILCO 43" ROKU'),
+    ("Air Fryer Mondial 4L, Preta, 1500W", "AIR FRYER MONDIAL 4L"),
+    ("Fone de Ouvido Bluetooth JBL Tune 520BT - Preto", "FONE DE OUVIDO BLUETOOTH JBL"),
+    ("Kit 3 Panelas Tramontina com tampa de vidro", "KIT 3 PANELAS TRAMONTINA"),
+    ("*Promo* Notebook_Gamer", "PROMO NOTEBOOKGAMER"),
+])
+def test_short_name(title, expected):
+    assert short_name(title) == expected
+
+
+def test_auto_headline_uses_name_and_discount_and_is_stable():
+    data = PostData(title="Echo Dot 5ª geração | Smart speaker", price=Decimal("299"), link="https://x",
+                    discount_pct=40, store="Amazon")
+    headline = auto_headline(data)
+    assert "ECHO DOT 5ª GERAÇÃO" in headline and "40%" in headline
+    assert headline == auto_headline(data)                         # mesmo produto, mesma chamada
+    titles = [f"Produto número {i}" for i in range(40)]
+    used = {auto_headline(PostData(title=t, price=Decimal(1), link="x", discount_pct=30)) .replace(
+        t.upper(), "{n}").replace("30", "{d}") for t in titles}
+    assert used == set(WITH_DISCOUNT)                              # os formatos variam entre produtos
+
+
+def test_auto_headline_without_discount_names_the_store():
+    data = PostData(title="Capinha", price=Decimal("10"), link="x", discount_pct=None, store="Shopee")
+    assert "SHOPEE" in auto_headline(data)
+    ml = PostData(title="Capinha", price=Decimal("10"), link="x", discount_pct=2, store="Mercado Livre")
+    assert "MERCADO LIVRE" in auto_headline(ml)
+
+
+def test_rendered_post_uses_auto_headline_unless_fixed_or_per_offer():
+    data = PostData(title="Echo Dot 5ª geração", price=Decimal("299"), link="https://x", discount_pct=40,
+                    store="Amazon")
+    auto = render_whatsapp(data, DEFAULT_TEMPLATE)
+    assert auto.startswith(f"🆘 *{auto_headline(data)}*")
+    assert render_whatsapp(data, DEFAULT_TEMPLATE, default_headline="OFERTA DO DIA").startswith("🆘 *OFERTA DO DIA*")
+    own = PostData(**{**data.__dict__, "headline": "SÓ HOJE"})
+    assert render_whatsapp(own, DEFAULT_TEMPLATE, default_headline="OFERTA DO DIA").startswith("🆘 *SÓ HOJE*")
