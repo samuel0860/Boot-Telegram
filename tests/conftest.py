@@ -8,7 +8,7 @@ from __future__ import annotations
 import itertools
 import os
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from decimal import Decimal
 from pathlib import Path
 from urllib.parse import urlsplit, urlunsplit
@@ -41,13 +41,16 @@ os.environ.update(
     TELEGRAM_BOT_USERNAME="TesteVendasBot",
     TELEGRAM_START_PARAM="tiktok",
     PUBLIC_BASE_URL="https://exemplo.com.br",
+    ERROR_REPORTS="0",
+    ADMIN_TELEGRAM_IDS="",
+    TELEGRAM_BOT_TOKEN="",
 )
 
 from alembic import command  # noqa: E402
 from alembic.config import Config  # noqa: E402
 
 from models import PaymentStatus  # noqa: E402
-from payments import PaymentNotFound, PixCharge, ProviderPayment  # noqa: E402
+from sales.payments import PaymentNotFound, PixCharge, ProviderPayment  # noqa: E402
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -104,7 +107,7 @@ class FakePaymentClient:
             provider="mercadopago", provider_payment_id=str(payment_id), status=p["status"],
             status_raw=p["status"].value, status_detail=None, amount=p["amount"], currency=p["currency"],
             external_reference=p["external_reference"], payment_method_id=p["method"],
-            approved_at=datetime.now(timezone.utc) if p["status"] == PaymentStatus.APPROVED else None,
+            approved_at=datetime.now(UTC) if p["status"] == PaymentStatus.APPROVED else None,
             raw={"id": payment_id, "status": p["status"].value},
         )
 
@@ -137,7 +140,7 @@ def catalog():
 
 @pytest.fixture
 def user():
-    from services.user_service import register_telegram_user
+    from sales.user_service import register_telegram_user
 
     return register_telegram_user(telegram_id=555000111, username="cliente", first_name="Ana",
                                   last_name=None, language_code="pt-br", source="tiktok")

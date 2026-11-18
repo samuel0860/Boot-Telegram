@@ -11,8 +11,8 @@ from sqlalchemy import func, select
 
 from database import session_scope
 from models import AdminUser, OrderStatus, PaymentStatus, Plan, Subscription, WebhookEvent
-from payments import get_payment_client, verify_mercadopago_signature
-from services import payment_service
+from sales import payment_service
+from sales.payments import get_payment_client, verify_mercadopago_signature
 
 SECRET = "test-webhook-secret"
 
@@ -42,9 +42,17 @@ def test_signature_helper():
 def test_landing_page(client):
     r = client.get("/")
     assert r.status_code == 200
-    assert "Verificação de acesso" in r.text and "Não sou um robô" in r.text
-    assert "https://t.me/TesteVendasBot?start=tiktok" in r.text
+    assert "Abrir no Telegram" in r.text and "Não sou um robô" not in r.text
+    assert 'href="https://t.me/TesteVendasBot?start=tiktok"' in r.text
     assert "Content-Security-Policy" in r.headers
+    # ?start= da página é repassado ao bot; valores inválidos são ignorados
+    assert 'href="https://t.me/TesteVendasBot?start=tiktok-v12"' in client.get("/?start=tiktok-v12").text
+    assert 'start=tiktok"' in client.get("/?start=<script>").text
+
+
+def test_privacy_page(client):
+    r = client.get("/privacidade")
+    assert r.status_code == 200 and "Lei Geral de Proteção de Dados" in r.text
 
 
 def test_health(client):
@@ -52,7 +60,7 @@ def test_health(client):
 
 
 def test_webhook_flow(client, catalog, user, fake_client):
-    r = payment_service.create_pix_checkout(user.telegram_id, catalog["monthly"], fake_client)
+    payment_service.create_pix_checkout(user.telegram_id, catalog["monthly"], fake_client)
     pid = next(iter(fake_client.payments))
     fake_client.set_status(pid, PaymentStatus.APPROVED)
     url = f"/webhooks/mercadopago?data.id={pid}&type=payment"
@@ -75,7 +83,8 @@ def test_webhook_flow(client, catalog, user, fake_client):
 
     with session_scope() as s:
         assert s.scalar(select(func.count(Subscription.id))) == 1
-        assert s.scalar(select(func.count(WebhookEvent.id))) == 3
+        # a requisição com assinatura inválida não é gravada
+        assert s.scalar(select(func.count(WebhookEvent.id))) == 2
         from models import Order
         assert s.scalar(select(Order.status)) == OrderStatus.PAID
 

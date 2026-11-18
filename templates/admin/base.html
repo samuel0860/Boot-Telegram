@@ -27,21 +27,21 @@
       <div class="nav-section">Visão geral</div>
       {{ navlink('/admin/', 'dashboard', 'Dashboard') }}
 
-      <div class="nav-section">Vendas</div>
+      <div class="nav-section">Vendas · bot próprio</div>
       {{ navlink('/admin/orders', 'cart', 'Pedidos', '/admin/orders') }}
       {{ navlink('/admin/payments', 'card', 'Transações', '/admin/payments') }}
       {{ navlink('/admin/subscriptions', 'repeat', 'Assinaturas', '/admin/subscriptions') }}
       {{ navlink('/admin/users', 'users', 'Usuários', '/admin/users') }}
-
-      <div class="nav-section">Catálogo</div>
+      {{ navlink('/admin/funnel', 'trending', 'Funil por origem', '/admin/funnel') }}
+      {{ navlink('/admin/coupons', 'percent', 'Cupons', '/admin/coupons') }}
       {{ navlink('/admin/plans', 'package', 'Planos', '/admin/plans') }}
       {{ navlink('/admin/products', 'file', 'Conteúdos', '/admin/products') }}
       {{ navlink('/admin/categories', 'folder', 'Categorias', '/admin/categories') }}
 
-      <div class="nav-section">Promoções</div>
-      {{ navlink('/admin/promo', 'megaphone', 'Bot de promoções') }}
-      {{ navlink('/admin/promo/offers', 'tag', 'Ofertas', '/admin/promo/offers') }}
-      {{ navlink('/admin/whatsapp', 'phone', 'WhatsApp', '/admin/whatsapp') }}
+      <div class="nav-section">Ofertas · afiliados</div>
+      {{ navlink('/admin/offers/bots', 'megaphone', 'Bots de ofertas', '/admin/offers/bots') }}
+      {{ navlink('/admin/offers', 'tag', 'Ofertas') }}
+      {{ navlink('/admin/offers/settings', 'key', 'Lojas e APIs', '/admin/offers/settings') }}
 
       <div class="nav-section">Sistema</div>
       {{ navlink('/admin/logs', 'history', 'Histórico', '/admin/logs') }}

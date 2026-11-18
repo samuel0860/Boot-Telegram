@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0f1a">
+  <title>Política de privacidade</title>
+  <link rel="icon" href="/static/images/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+  <main class="wrap">
+    <article class="card doc">
+      <h1>Política de privacidade</h1>
+      <p class="muted">Como tratamos seus dados pessoais, conforme a Lei Geral de Proteção de Dados (Lei 13.709/2018).</p>
+
+      <h2>Quais dados coletamos</h2>
+      <ul>
+        <li><b>Do Telegram:</b> seu ID numérico, nome, @usuário e idioma, quando você inicia o bot.</li>
+        <li><b>Da compra:</b> plano escolhido, valor, data e situação do pagamento PIX. Não recebemos dados do seu banco nem do seu cartão — o pagamento é processado pelo Mercado Pago.</li>
+        <li><b>Origem:</b> o link pelo qual você chegou (ex.: perfil do TikTok), para sabermos quais divulgações funcionam.</li>
+      </ul>
+
+      <h2>Para que usamos</h2>
+      <ul>
+        <li>Gerar a cobrança, confirmar o pagamento e liberar o conteúdo comprado.</li>
+        <li>Avisar sobre vencimento e renovação do seu acesso, e enviar ofertas relacionadas pelo próprio bot.</li>
+        <li>Prevenir fraudes e atender solicitações de suporte.</li>
+      </ul>
+
+      <h2>Com quem compartilhamos</h2>
+      <p>Somente com o <b>Mercado Pago</b> (processamento do PIX) e o <b>Telegram</b> (entrega das mensagens). Não vendemos seus dados.</p>
+
+      <h2>Por quanto tempo guardamos</h2>
+      <ul>
+        <li>Pedidos e pagamentos: pelo prazo exigido pela legislação fiscal e para tratar estornos.</li>
+        <li>Registros técnicos de uso: {{ log_days ~ ' dias' if log_days else 'enquanto necessários' }}.</li>
+        <li>Notificações de pagamento: {{ webhook_days ~ ' dias' if webhook_days else 'enquanto necessárias' }}.</li>
+      </ul>
+
+      <h2>Seus direitos</h2>
+      <p>Você pode pedir acesso, correção ou exclusão dos seus dados, e parar de receber mensagens bloqueando o bot a qualquer momento.
+        {% if contact %}Fale com a gente: <b>{{ contact }}</b>.{% else %}Use o botão Suporte do bot.{% endif %}</p>
+
+      <p class="muted" style="margin-top:20px"><a href="/">← Voltar</a></p>
+    </article>
+  </main>
+</body>
+</html>

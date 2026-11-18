@@ -78,7 +78,9 @@ class Settings:
     expiry_reminder_days: int = field(default_factory=lambda: _int("EXPIRY_REMINDER_DAYS", 3))
     delivery_max_attempts: int = field(default_factory=lambda: _int("DELIVERY_MAX_ATTEMPTS", 5))
 
-    # Pagamentos (Mercado Pago / PIX)
+    # Pagamentos do MÓDULO DE VENDAS — gateway usado para cobrar (sales/gateways/)
+    payment_gateway: str = field(default_factory=lambda: _str("PAYMENT_GATEWAY", "mercadopago").lower())
+    # Mercado Pago (PIX)
     mp_access_token: str = field(default_factory=lambda: _str("MP_ACCESS_TOKEN"))
     mp_webhook_secret: str = field(default_factory=lambda: _str("MP_WEBHOOK_SECRET"))
     mp_api_base: str = field(default_factory=lambda: _str("MP_API_BASE", "https://api.mercadopago.com").rstrip("/"))
@@ -87,9 +89,28 @@ class Settings:
     currency: str = field(default_factory=lambda: _str("CURRENCY", "BRL").upper())
     max_orders_per_10min: int = field(default_factory=lambda: _int("MAX_ORDERS_PER_10MIN", 5))
 
+    # Página inicial (o link da bio do TikTok aponta para ela)
+    landing_title: str = field(default_factory=lambda: _str("LANDING_TITLE", "Conteúdo exclusivo no Telegram"))
+    landing_subtitle: str = field(default_factory=lambda: _str(
+        "LANDING_SUBTITLE", "Escolha seu acesso, pague por PIX e receba na hora — tudo automático, direto no Telegram."))
+
+    # Funil de vendas
+    # Minutos após o PIX expirar para mandar "quer gerar outro?" (0 = não manda)
+    recovery_delay_minutes: int = field(default_factory=lambda: _int("RECOVERY_DELAY_MINUTES", 10))
+    # Depois da entrega, oferecer um plano maior (uma vez por pedido)
+    upsell_enabled: bool = field(default_factory=lambda: _bool("UPSELL_ENABLED", True))
+
+    # LGPD — retenção de registros técnicos (dias; 0 = guardar para sempre)
+    log_retention_days: int = field(default_factory=lambda: _int("LOG_RETENTION_DAYS", 365))
+    webhook_retention_days: int = field(default_factory=lambda: _int("WEBHOOK_RETENTION_DAYS", 180))
+    privacy_contact: str = field(default_factory=lambda: _str("PRIVACY_CONTACT"))
+
     # WhatsApp (Evolution API)
     evolution_api_url: str = field(default_factory=lambda: _str("EVOLUTION_API_URL", "http://localhost:8080").rstrip("/"))
     evolution_api_key: str = field(default_factory=lambda: _str("EVOLUTION_API_KEY"))
+
+    # Avisar os administradores no Telegram quando ocorrer um erro (0 desliga)
+    error_reports: bool = field(default_factory=lambda: _bool("ERROR_REPORTS", True))
 
     # Painel administrativo
     session_max_age_seconds: int = field(default_factory=lambda: _int("SESSION_MAX_AGE_SECONDS", 8 * 3600))
@@ -116,7 +137,11 @@ class Settings:
 
     @property
     def payments_configured(self) -> bool:
-        return bool(self.mp_access_token)
+        return bool(self.mp_access_token) if self.payment_gateway == "mercadopago" else False
+
+    @property
+    def payment_gateway_label(self) -> str:
+        return {"mercadopago": "Mercado Pago"}.get(self.payment_gateway, self.payment_gateway)
 
     @property
     def webhook_url(self) -> str | None:

@@ -12,8 +12,9 @@
     <div class="card-header">
       <div class="card-icon">{{ icon('send') }}</div>
       <div><h2>Conectar meu Telegram</h2>
-        <p>Com o Telegram vinculado você recebe <b>alertas</b> e o <b>resumo diário</b>, e pode postar ofertas
-          <b>colando links do Mercado Livre</b> direto na conversa com o bot.</p></div>
+        <p>Com o Telegram vinculado você recebe os <b>alertas</b> e o <b>resumo diário</b>: das vendas pelo bot de vendas,
+          e de cada bot de ofertas pelo próprio bot (abra cada um e envie <code>/start</code>). Nos bots de ofertas você
+          também posta ofertas <b>colando links do Mercado Livre</b> na conversa.</p></div>
     </div>
 
     {% if linked_ids or env_ids %}
@@ -71,6 +72,45 @@
   </section>
   {% endif %}
 
+  {# ---------------- 2FA ---------------- #}
+  <section class="card" id="2fa">
+    <div class="card-header">
+      <div class="card-icon">{{ icon('key') }}</div>
+      <div><h2>Verificação em duas etapas</h2>
+        <p>Além da senha, o login pede um código de 6 dígitos do celular (Google Authenticator, Microsoft
+          Authenticator, Authy...). Mesmo que alguém descubra sua senha, não consegue entrar.</p></div>
+    </div>
+    {% if admin.totp_enabled %}
+      <div class="alert alert-ok">{{ icon('check') }}<span>Ativada. O painel pede o código do aplicativo a cada login.</span></div>
+      <details>
+        <summary class="hint">Desativar verificação em duas etapas</summary>
+        <form method="post" action="/admin/account/2fa/disable" class="form mt-3" data-confirm="Desativar a verificação em duas etapas?">{{ csrf() }}
+          <div class="grid2">
+            <label>Senha atual <input name="password" type="password" required autocomplete="current-password"></label>
+            <label>Código do aplicativo <input name="code" required inputmode="numeric" autocomplete="one-time-code" maxlength="7"></label>
+          </div>
+          <button class="btn btn-danger btn-sm">Desativar</button>
+        </form>
+      </details>
+    {% elif totp_setup %}
+      <ol class="steps-list big-steps">
+        <li>Abra o aplicativo autenticador no celular e escaneie o QR Code:
+          <div class="qr-2fa">{{ totp_setup.qr|safe }}</div>
+          <p class="hint">Não consegue escanear? Digite a chave: <code>{{ totp_setup.secret }}</code></p></li>
+        <li>Digite o código de 6 dígitos que aparece no aplicativo:
+          <form method="post" action="/admin/account/2fa/confirm" class="row-form mt-2">{{ csrf() }}
+            <input name="code" required inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="000000" class="otp-input">
+            <button class="btn">{{ icon('check') }}Ativar</button>
+          </form></li>
+      </ol>
+    {% else %}
+      {% if admin.is_superuser %}<div class="alert alert-warn">{{ icon('alert') }}<span>Recomendado para superusuários: este painel controla vendas e configurações.</span></div>{% endif %}
+      <form method="post" action="/admin/account/2fa/start">{{ csrf() }}
+        <button class="btn">{{ icon('lock') }}Ativar verificação em duas etapas</button>
+      </form>
+    {% endif %}
+  </section>
+
   {# ---------------- Senha ---------------- #}
   <section class="card">
     <div class="card-header">
@@ -99,10 +139,16 @@
     </ul>
   </section>
   <section class="card">
-    <h2 class="mb-3">Comandos do bot para você</h2>
+    <h2 class="mb-3">Comandos para você</h2>
+    <p class="hint mb-3"><b>Bot de vendas</b></p>
     <ul class="today-list">
-      <li><span><code>/status</code></span><b>saúde do sistema</b></li>
-      <li><span><code>/resumo</code></span><b>números de hoje</b></li>
+      <li><span><code>/status</code></span><b>situação das vendas</b></li>
+      <li><span><code>/resumo</code></span><b>vendas de hoje</b></li>
+      <li><span>enviar arquivo/foto</span><b>mostra o file_id</b></li>
+    </ul>
+    <p class="hint mt-3 mb-3"><b>Bots de ofertas</b></p>
+    <ul class="today-list">
+      <li><span><code>/status</code></span><b>situação do bot</b></li>
       <li><span>colar link</span><b>monta o post</b></li>
       <li><span>encaminhar post</span><b>ID do canal</b></li>
     </ul>

@@ -255,8 +255,15 @@ class Order(TimestampMixin, Base):
     delivery_claimed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     delivery_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     delivery_error: Mapped[str | None] = mapped_column(Text)
+    # Cupom de desconto usado (amount já é o valor com desconto)
+    coupon_id: Mapped[int | None] = mapped_column(ForeignKey("coupons.id", ondelete="SET NULL"))
+    # Mensagem "seu PIX expirou, quer gerar outro?" já enviada
+    recovery_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Oferta de outro plano enviada após a entrega
+    upsell_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     user: Mapped[User] = relationship(back_populates="orders")
+    coupon: Mapped[Coupon | None] = relationship()
     plan: Mapped[Plan] = relationship()
     payments: Mapped[list[Payment]] = relationship(back_populates="order", order_by="Payment.id")
     subscription: Mapped[Subscription | None] = relationship(back_populates="order", uselist=False)
@@ -270,6 +277,35 @@ class Order(TimestampMixin, Base):
             "paid_at",
             postgresql_where=text("status = 'paid' AND delivered_at IS NULL"),
         ),
+        Index("ix_orders_coupon_id", "coupon_id"),
+        Index(
+            "ix_orders_recovery_candidates",
+            "expires_at",
+            postgresql_where=text("status = 'expired' AND recovery_sent_at IS NULL"),
+        ),
+    )
+
+
+class Coupon(TimestampMixin, Base):
+    """Cupom de desconto para os planos vendidos no bot (PIX)."""
+
+    __tablename__ = "coupons"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)  # sempre MAIÚSCULO
+    percent_off: Mapped[int] = mapped_column(Integer, nullable=False)
+    # NULL = vale para todos os planos
+    plan_id: Mapped[int | None] = mapped_column(ForeignKey("plans.id", ondelete="CASCADE"))
+    # NULL = ilimitado. Conta somente pedidos PAGOS.
+    max_uses: Mapped[int | None] = mapped_column(Integer)
+    valid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+
+    plan: Mapped[Plan | None] = relationship()
+
+    __table_args__ = (
+        CheckConstraint("percent_off BETWEEN 1 AND 90", name="percent_range"),
+        CheckConstraint("max_uses IS NULL OR max_uses > 0", name="max_uses_positive"),
     )
 
 
@@ -414,6 +450,10 @@ class AdminUser(TimestampMixin, Base):
     failed_login_attempts: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     last_login_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Verificação em duas etapas (TOTP). O segredo fica criptografado (Fernet).
+    totp_secret: Mapped[str | None] = mapped_column(Text)
+    totp_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    totp_last_step: Mapped[int | None] = mapped_column(BigInteger)  # impede reutilizar o mesmo código
 
 
 # --------------------------------------------------------------------------- #
@@ -449,8 +489,61 @@ class WaStatus(str, enum.Enum):
     SKIPPED = "skipped"    # expirou na fila (preço poderia estar desatualizado)
 
 
+class TargetChannel(str, enum.Enum):
+    TELEGRAM = "telegram"    # canal ou grupo do Telegram (target_id = @canal ou -100...)
+    WHATSAPP = "whatsapp"    # grupo do WhatsApp (target_id = ...@g.us)
+
+
+class OfferBot(TimestampMixin, Base):
+    """MÓDULO DE OFERTAS: um bot que alimenta os SEUS grupos/canais de ofertas.
+
+    Cada bot tem o próprio token do Telegram (criado no @BotFather), o próprio
+    número de WhatsApp (instância da Evolution API) e as próprias configurações
+    de busca, modelo do post e ritmo de envio (JSON em `config`).
+    """
+
+    __tablename__ = "offer_bots"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(80), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    telegram_token: Mapped[str | None] = mapped_column(Text)            # criptografado (Fernet)
+    telegram_username: Mapped[str | None] = mapped_column(String(64))
+    telegram_id: Mapped[int | None] = mapped_column(BigInteger)
+    wa_instance: Mapped[str | None] = mapped_column(String(40), unique=True)
+    config: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    # Dados de funcionamento (última busca, início do aquecimento do WhatsApp, chats detectados...)
+    state: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+
+    targets: Mapped[list[OfferTarget]] = relationship(
+        back_populates="bot", cascade="all, delete-orphan", order_by="OfferTarget.id")
+
+
+class OfferTarget(Base):
+    """Destino de um bot de ofertas: canal/grupo do Telegram ou grupo do WhatsApp."""
+
+    __tablename__ = "offer_bot_targets"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bot_id: Mapped[int] = mapped_column(ForeignKey("offer_bots.id", ondelete="CASCADE"), nullable=False)
+    channel: Mapped[TargetChannel] = mapped_column(_enum(TargetChannel, "target_channel"), nullable=False)
+    target_id: Mapped[str] = mapped_column(String(64), nullable=False)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), nullable=False)
+
+    bot: Mapped[OfferBot] = relationship(back_populates="targets")
+
+    __table_args__ = (
+        UniqueConstraint("bot_id", "channel", "target_id", name="uq_offer_bot_targets_bot_channel_target"),
+    )
+
+
 class PromoOffer(TimestampMixin, Base):
-    """Ofertas coletadas na API do Mercado Livre para publicar no canal."""
+    """Produto coletado no Mercado Livre (compartilhado pelos bots de ofertas).
+
+    O que cada bot fez com a oferta (fila, publicação, WhatsApp) fica em OfferPost.
+    """
 
     __tablename__ = "promo_offers"
 
@@ -460,6 +553,8 @@ class PromoOffer(TimestampMixin, Base):
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     product_url: Mapped[str] = mapped_column(Text, nullable=False)
     affiliate_url: Mapped[str | None] = mapped_column(Text)
+    headline: Mapped[str | None] = mapped_column(String(120))   # {chamada} do modelo do post
+    coupon: Mapped[str | None] = mapped_column(String(40))      # {cupom} do modelo do post
     image_url: Mapped[str | None] = mapped_column(Text)
     price: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
     original_price: Mapped[Decimal | None] = mapped_column(MONEY)
@@ -467,16 +562,35 @@ class PromoOffer(TimestampMixin, Base):
     free_shipping: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     category_id: Mapped[str | None] = mapped_column(String(32))
     source: Mapped[str | None] = mapped_column(String(100))
+    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    posts: Mapped[list[OfferPost]] = relationship(back_populates="offer", cascade="all, delete-orphan")
+
+    __table_args__ = (
+        UniqueConstraint("platform", "external_id", name="uq_promo_offers_platform_external_id"),
+        CheckConstraint("price > 0", name="price_positive"),
+    )
+
+    @property
+    def link(self) -> str:
+        return self.affiliate_url or self.product_url
+
+
+class OfferPost(TimestampMixin, Base):
+    """O que UM bot de ofertas fez com UMA oferta: aprovação, fila, envio ao Telegram e ao WhatsApp."""
+
+    __tablename__ = "offer_posts"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    offer_id: Mapped[int] = mapped_column(ForeignKey("promo_offers.id", ondelete="CASCADE"), nullable=False)
+    bot_id: Mapped[int] = mapped_column(ForeignKey("offer_bots.id", ondelete="CASCADE"), nullable=False)
     status: Mapped[OfferStatus] = mapped_column(
         _enum(OfferStatus, "offer_status"), nullable=False, default=OfferStatus.NEW
     )
-    last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     queued_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     posted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    telegram_chat_id: Mapped[str | None] = mapped_column(String(64))
-    telegram_message_id: Mapped[int | None] = mapped_column(BigInteger)
+    tg_messages: Mapped[list[Any] | None] = mapped_column(JSONB)   # [{"target": "...", "message_id": 123}]
     error: Mapped[str | None] = mapped_column(Text)
-    # WhatsApp
     wa_status: Mapped[WaStatus] = mapped_column(
         _enum(WaStatus, "wa_status"), nullable=False, default=WaStatus.NONE, server_default=WaStatus.NONE.value
     )
@@ -484,16 +598,13 @@ class PromoOffer(TimestampMixin, Base):
     wa_sent_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     wa_error: Mapped[str | None] = mapped_column(Text)
 
-    __table_args__ = (
-        UniqueConstraint("platform", "external_id", name="uq_promo_offers_platform_external_id"),
-        Index("ix_promo_offers_wa_status_wa_queued_at", "wa_status", "wa_queued_at"),
-        Index("ix_promo_offers_wa_sent_at", "wa_sent_at"),
-        CheckConstraint("price > 0", name="price_positive"),
-        Index("ix_promo_offers_status_discount_pct", "status", "discount_pct"),
-        Index("ix_promo_offers_status_queued_at", "status", "queued_at"),
-        Index("ix_promo_offers_posted_at", "posted_at"),
-    )
+    offer: Mapped[PromoOffer] = relationship(back_populates="posts")
+    bot: Mapped[OfferBot] = relationship()
 
-    @property
-    def link(self) -> str:
-        return self.affiliate_url or self.product_url
+    __table_args__ = (
+        UniqueConstraint("offer_id", "bot_id", name="uq_offer_posts_offer_bot"),
+        Index("ix_offer_posts_bot_id_status_queued_at", "bot_id", "status", "queued_at"),
+        Index("ix_offer_posts_bot_id_posted_at", "bot_id", "posted_at"),
+        Index("ix_offer_posts_bot_id_wa_status_wa_queued_at", "bot_id", "wa_status", "wa_queued_at"),
+        Index("ix_offer_posts_bot_id_wa_sent_at", "bot_id", "wa_sent_at"),
+    )

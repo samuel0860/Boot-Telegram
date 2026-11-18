@@ -7,19 +7,27 @@ from datetime import timedelta
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from fastapi import Depends, Form, HTTPException, Request
-from sqlalchemy import func, select
+from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from config import settings
+from core.audit import log_event, utcnow
 from database import get_db
-from models import AdminUser
-from services.access_service import log_event, utcnow
+from models import AccessLog, AdminUser
 
 _hasher = PasswordHasher()  # Argon2id com parâmetros recomendados
 # Hash fixo usado quando o usuário não existe (tempo de resposta uniforme).
 _DUMMY_HASH = _hasher.hash(secrets.token_hex(16))
 
 MIN_PASSWORD_LENGTH = 10
+# Limites de tentativas (janela = ADMIN_LOCKOUT_MINUTES):
+# - por IP, qualquer usuário: barra força bruta vinda de um mesmo endereço;
+# - por usuário + IP: o bloqueio vale só para o IP que errou, então um atacante
+#   não consegue trancar o administrador legítimo errando a senha de propósito;
+# - por conta, alto: só dispara em ataque distribuído (muitos IPs).
+IP_MAX_FAILURES = 20
+ACCOUNT_MAX_FAILURES = 50
+FAILED_ACTIONS = ("admin_login_failed", "admin_2fa_failed")
 
 
 class NotAuthenticated(Exception):
@@ -49,15 +57,48 @@ def client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
+def _recent_failures(session: Session, ip: str | None, admin_id: int | None = None) -> int:
+    if not ip:
+        return 0
+    since = utcnow() - timedelta(minutes=settings.admin_lockout_minutes)
+    cond = [AccessLog.action.in_(FAILED_ACTIONS), AccessLog.ip_address == ip, AccessLog.created_at > since]
+    if admin_id is not None:
+        cond.append(AccessLog.admin_user_id == admin_id)
+    return session.scalar(select(func.count(AccessLog.id)).where(and_(*cond))) or 0
+
+
+def ip_blocked(session: Session, ip: str | None) -> bool:
+    return _recent_failures(session, ip) >= IP_MAX_FAILURES
+
+
+def register_failure(session: Session, admin: AdminUser | None, ip: str | None, action: str, **details) -> None:
+    now = utcnow()
+    if admin is not None:
+        admin.failed_login_attempts += 1
+        if admin.failed_login_attempts >= ACCOUNT_MAX_FAILURES:
+            admin.locked_until = now + timedelta(minutes=settings.admin_lockout_minutes)
+            admin.failed_login_attempts = 0
+    log_event(session, action, admin_user_id=admin.id if admin else None, ip_address=ip, **details)
+
+
+TOO_MANY = "Muitas tentativas. Aguarde alguns minutos e tente novamente."
+
+
 def authenticate(session: Session, username: str, password: str, ip: str | None) -> tuple[AdminUser | None, str | None]:
-    """Retorna (admin, erro)."""
+    """Confere usuário e senha. Retorna (admin, erro).
+
+    Se o admin tiver verificação em duas etapas, o login só termina em complete_login()
+    depois do código do aplicativo autenticador.
+    """
     username = username.strip().lower()
+    if ip_blocked(session, ip):
+        return None, TOO_MANY
     admin = session.scalar(
         select(AdminUser).where(func.lower(AdminUser.username) == username).with_for_update()
     )
     if admin is None:
         verify_password(_DUMMY_HASH, password)
-        log_event(session, "admin_login_failed", ip_address=ip, username=username[:64])
+        register_failure(session, None, ip, "admin_login_failed", username=username[:64])
         session.commit()
         return None, "Usuário ou senha inválidos."
 
@@ -65,24 +106,30 @@ def authenticate(session: Session, username: str, password: str, ip: str | None)
     if admin.locked_until and admin.locked_until > now:
         session.commit()
         return None, "Conta temporariamente bloqueada por excesso de tentativas. Tente mais tarde."
+    if _recent_failures(session, ip, admin.id) >= settings.admin_max_failed_logins:
+        session.commit()
+        return None, "Conta temporariamente bloqueada por excesso de tentativas neste dispositivo. Tente mais tarde."
 
     if not admin.is_active or not verify_password(admin.password_hash, password):
-        admin.failed_login_attempts += 1
-        if admin.failed_login_attempts >= settings.admin_max_failed_logins:
-            admin.locked_until = now + timedelta(minutes=settings.admin_lockout_minutes)
-            admin.failed_login_attempts = 0
-        log_event(session, "admin_login_failed", admin_user_id=admin.id, ip_address=ip)
+        register_failure(session, admin, ip, "admin_login_failed")
         session.commit()
         return None, "Usuário ou senha inválidos."
 
     if _hasher.check_needs_rehash(admin.password_hash):
         admin.password_hash = _hasher.hash(password)
+    if admin.totp_enabled:
+        session.commit()
+        return admin, None
+    complete_login(session, admin, ip)
+    return admin, None
+
+
+def complete_login(session: Session, admin: AdminUser, ip: str | None) -> None:
     admin.failed_login_attempts = 0
     admin.locked_until = None
-    admin.last_login_at = now
-    log_event(session, "admin_login", admin_user_id=admin.id, ip_address=ip)
+    admin.last_login_at = utcnow()
+    log_event(session, "admin_login", admin_user_id=admin.id, ip_address=ip, two_factor=admin.totp_enabled)
     session.commit()
-    return admin, None
 
 
 def login_session(request: Request, admin: AdminUser) -> None:

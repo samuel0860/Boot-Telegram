@@ -1,0 +1,80 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import csrf, page_header with context %}
+{% from "admin/_icons.html" import icon with context %}
+{% block title %}Lojas e APIs{% endblock %}
+{% block content %}
+{% call page_header('Lojas e APIs', 'Contas de afiliado do módulo de ofertas. Valem para todos os bots; cada bot escolhe de quais lojas busca.') %}
+  <a class="btn btn-secondary" href="/admin/offers/bots">{{ icon('megaphone') }}Bots de ofertas</a>
+{% endcall %}
+
+<div class="layout-2col">
+<div>
+  {# ---------------- Mercado Livre #}
+  <section class="card">
+    <div class="card-header"><div class="card-icon">{{ icon('key') }}</div>
+      <div><h2>Mercado Livre <span class="badge {{ 'badge-ok' if values.ml_app_id and secret_mask else 'badge-muted' }}"><span class="dot"></span>{{ 'configurado' if values.ml_app_id and secret_mask else 'não configurado' }}</span></h2>
+        <p>Crie uma aplicação em developers.mercadolivre.com.br e copie o App ID e a Secret Key.</p></div></div>
+    {% if admin.is_superuser %}
+    <form method="post" action="/admin/offers/settings" class="form">{{ csrf() }}
+      <input type="hidden" name="store" value="mercadolivre">
+      <div class="grid2">
+        <label>App ID (Client ID)<input name="ml_app_id" value="{{ values.ml_app_id }}" inputmode="numeric" maxlength="64" autocomplete="off" placeholder="1234567890123456"></label>
+        <label>Secret Key (Client Secret)
+          <input name="ml_secret_key" type="password" maxlength="128" autocomplete="new-password"
+                 placeholder="{{ 'Salva (' ~ secret_mask ~ ') — deixe vazio para manter' if secret_mask else 'Cole a Secret Key' }}"></label>
+      </div>
+      <div class="row-form">
+        <button class="btn">{{ icon('save') }}Salvar</button>
+        <button class="btn btn-secondary" formaction="/admin/offers/settings/test" data-loading="Testando...">{{ icon('plug') }}Testar</button>
+      </div>
+    </form>
+    {% endif %}
+    <p class="hint mt-2">{{ icon('info') }} O Mercado Livre <b>não tem API para gerar link de afiliado</b>: gere no Linkbuilder e cole na oferta, ou cole o link <code>meli.la</code> na conversa com o bot de ofertas.</p>
+  </section>
+
+  {# ---------------- Shopee #}
+  <section class="card">
+    <div class="card-header"><div class="card-icon">{{ icon('tag') }}</div>
+      <div><h2>Shopee <span class="badge {{ 'badge-ok' if values.shopee_app_id and shopee_mask else 'badge-muted' }}"><span class="dot"></span>{{ 'configurado' if values.shopee_app_id and shopee_mask else 'não configurado' }}</span></h2>
+        <p>Em <a href="https://affiliate.shopee.com.br" target="_blank" rel="noopener">affiliate.shopee.com.br</a> → <b>Open API</b>, copie o <b>AppID</b> e a <b>Senha</b>. O acesso à Open API precisa estar liberado na sua conta de afiliado.</p></div></div>
+    {% if admin.is_superuser %}
+    <form method="post" action="/admin/offers/settings" class="form">{{ csrf() }}
+      <input type="hidden" name="store" value="shopee">
+      <div class="grid2">
+        <label>AppID<input name="shopee_app_id" value="{{ values.shopee_app_id }}" inputmode="numeric" maxlength="64" autocomplete="off" placeholder="18300000000"></label>
+        <label>Senha (Secret)
+          <input name="shopee_secret" type="password" maxlength="128" autocomplete="new-password"
+                 placeholder="{{ 'Salva (' ~ shopee_mask ~ ') — deixe vazio para manter' if shopee_mask else 'Cole a Senha da API' }}"></label>
+      </div>
+      <div class="row-form">
+        <button class="btn">{{ icon('save') }}Salvar</button>
+        <button class="btn btn-secondary" formaction="/admin/offers/settings/test" data-loading="Testando...">{{ icon('plug') }}Testar</button>
+      </div>
+    </form>
+    {% endif %}
+    <p class="hint mt-2">{{ icon('check') }} Na Shopee o link de afiliado vem <b>pronto da API</b>, já com a sua comissão — não precisa colar nada.</p>
+  </section>
+  <p class="hint">{{ icon('lock') }} As chaves secretas ficam criptografadas e nunca são exibidas de novo.</p>
+</div>
+
+<aside class="sticky">
+  <section class="card">
+    <div class="status-hero">
+      <span class="status-dot {{ 'on' if worker_online }}"></span>
+      <div><b>{{ 'Módulo de ofertas no ar' if worker_online else 'Módulo de ofertas parado' }}</b>
+        <small>processo <code>offers_bot</code></small></div>
+    </div>
+    {% if test_results %}
+    <div class="test-results">
+      {% for t in test_results %}
+      <div class="test-row {{ 'ok' if t.ok else 'fail' }}">{{ icon('check' if t.ok else 'x') }}
+        <div><b>{{ t.step }}</b><small class="hint">{{ t.detail }}</small></div></div>
+      {% endfor %}
+    </div>
+    {% else %}
+    <p class="hint mt-3">Use “Testar” em cada loja para conferir as credenciais.</p>
+    {% endif %}
+  </section>
+</aside>
+</div>
+{% endblock %}
