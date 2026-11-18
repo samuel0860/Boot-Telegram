@@ -2,32 +2,67 @@
 {% from "admin/_icons.html" import icon with context %}
 {% block title %}Entrar{% endblock %}
 {% block auth %}
-<div class="auth-card">
-  <div class="auth-brand">
-    <span class="brand-mark">{{ icon('zap') }}</span>
-    <span class="brand-text">Telegram Vendas<small>Painel administrativo</small></span>
+<section class="auth-aside" aria-hidden="true">
+  <div class="auth-logo"><span class="brand-mark">{{ icon('zap') }}</span>Telegram Vendas</div>
+
+  <div class="auth-pitch">
+    <h2>Suas vendas e ofertas,<br><em>num só painel.</em></h2>
+    <p>Acompanhe pedidos, pagamentos PIX e os bots de ofertas do Telegram e do WhatsApp em tempo real.</p>
+    <ul class="auth-features">
+      <li><span class="auth-feature-ic">{{ icon('cart') }}</span>
+        <span><b>Vendas automáticas</b>Pagamento PIX confirmado e acesso liberado na hora.</span></li>
+      <li><span class="auth-feature-ic">{{ icon('megaphone') }}</span>
+        <span><b>Bots de ofertas</b>Mercado Livre e Shopee publicados nos seus grupos.</span></li>
+      <li><span class="auth-feature-ic">{{ icon('shield') }}</span>
+        <span><b>Acesso protegido</b>Senha forte, verificação em duas etapas e histórico de ações.</span></li>
+    </ul>
   </div>
-  {% if step == '2fa' %}
-  <h1>Verificação em duas etapas</h1>
-  <p class="subtitle">Digite o código de 6 dígitos do seu aplicativo autenticador.</p>
-  {% if error %}<div class="alert alert-error">{{ icon('alert') }}<span>{{ error }}</span></div>{% endif %}
-  <form method="post" action="/admin/login/2fa" class="form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-    <label>Código <input name="code" required autocomplete="one-time-code" inputmode="numeric" pattern="[0-9 ]{6,7}"
-      maxlength="7" autofocus class="otp-input" placeholder="000000"></label>
-    <button class="btn btn-lg btn-block">{{ icon('lock') }}Confirmar</button>
-  </form>
-  <p class="hint mt-3"><a href="/admin/login">Voltar</a> · Perdeu o celular? Rode no servidor: <code>make reset-2fa u=usuario</code></p>
-  {% else %}
-  <h1>Entrar</h1>
-  <p class="subtitle">Acesse com seu usuário de administrador.</p>
-  {% if error %}<div class="alert alert-error">{{ icon('alert') }}<span>{{ error }}</span></div>{% endif %}
-  <form method="post" action="/admin/login" class="form">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
-    <label>Usuário <input name="username" required autocomplete="username" autofocus maxlength="64"></label>
-    <label>Senha <input name="password" type="password" required autocomplete="current-password" maxlength="256"></label>
-    <button class="btn btn-lg btn-block">{{ icon('lock') }}Entrar</button>
-  </form>
-  {% endif %}
-</div>
+
+  <div class="auth-copy">Telegram Vendas · Área restrita a administradores</div>
+</section>
+
+<section class="auth-panel">
+  <div class="auth-card">
+    <div class="auth-logo"><span class="brand-mark">{{ icon('zap') }}</span>Telegram Vendas</div>
+
+    {% for f in flashes %}
+      <div class="alert alert-{{ f.kind }}">{{ icon('check' if f.kind == 'ok' else 'alert') }}<span>{{ f.message }}</span></div>
+    {% endfor %}
+
+    {% if step == '2fa' %}
+    <h1>Verificação em duas etapas</h1>
+    <p class="subtitle">Abra o aplicativo autenticador e digite o código de 6 dígitos.</p>
+    {% if error %}<div class="alert alert-error">{{ icon('alert') }}<span>{{ error }}</span></div>{% endif %}
+    <form method="post" action="/admin/login/2fa" class="form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+      <label for="code">Código de verificação</label>
+      <div class="input-wrap mb-field">{{ icon('shield') }}
+        <input id="code" name="code" required autocomplete="one-time-code" inputmode="numeric" pattern="[0-9 ]{6,7}"
+          maxlength="7" autofocus class="otp-input" placeholder="000000"></div>
+      <button class="btn btn-lg btn-block" data-loading="Verificando…">{{ icon('lock') }}Confirmar</button>
+    </form>
+    <p class="auth-bottom"><a href="/admin/login">← Voltar para o login</a><br>
+      Perdeu o celular? No servidor, rode <code>make reset-2fa u=usuario</code>.</p>
+    {% else %}
+    <h1>Bem-vindo de volta</h1>
+    <p class="subtitle">Entre com seu usuário de administrador para continuar.</p>
+    {% if error %}<div class="alert alert-error">{{ icon('alert') }}<span>{{ error }}</span></div>{% endif %}
+    <form method="post" action="/admin/login" class="form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+      <label for="username">Usuário</label>
+      <div class="input-wrap mb-field">{{ icon('user') }}
+        <input id="username" name="username" required autocomplete="username" autofocus maxlength="64" placeholder="seu usuário"></div>
+      <label for="password">Senha</label>
+      <div class="input-wrap mb-field">{{ icon('lock') }}
+        <input id="password" name="password" type="password" required autocomplete="current-password" maxlength="256"
+          class="has-reveal" placeholder="••••••••">
+        <button type="button" class="reveal" data-reveal="password" aria-label="Mostrar senha" title="Mostrar senha">
+          {{ icon('eye', 'icon-show') }}{{ icon('eye-off', 'icon-hide') }}</button>
+      </div>
+      <button class="btn btn-lg btn-block" data-loading="Entrando…">Entrar no painel</button>
+    </form>
+    <div class="auth-foot">{{ icon('shield') }}Conexão protegida · tentativas de acesso são registradas</div>
+    {% endif %}
+  </div>
+</section>
 {% endblock %}

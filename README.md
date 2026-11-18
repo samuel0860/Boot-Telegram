@@ -133,7 +133,6 @@ O sistema tem **dois módulos independentes**, cada um com processo, bot(s) e co
 ├── migrations/             # Alembic (env.py + versions/)
 ├── scripts/                # backup.sh, restore.sh
 ├── tests/                  # Testes automatizados (PostgreSQL real)
-├── .github/workflows/      # CI: ruff + pytest a cada push
 ├── backups/                # Destino dos backups (ignorado no Git)
 ├── Dockerfile, docker-compose.yml, Caddyfile, Makefile, pyproject.toml (ruff/pytest)
 ├── requirements.txt, requirements-dev.txt
@@ -336,7 +335,6 @@ docker compose up -d postgres
 make test-docker            # ruff + pytest dentro de um container
 # ou, com .venv local:  ruff check . && pytest -q
 ```
-O GitHub Actions (`.github/workflows/ci.yml`) roda o mesmo a cada push.
 
 Cobrem: cadastro sem duplicidade, checkout e reaproveitamento de PIX, clique em "verificar" sem pagamento não libera, aprovação libera uma única vez (inclusive com 8 processamentos concorrentes), divergência de valor bloqueia, pagamento tardio é honrado, estorno revoga, renovação soma período, expiração e remoção de grupos, webhook (assinatura inválida → 401 e nada gravado, duplicado → ignorado), login/CSRF/limites de tentativa/2FA/permissões do painel, cupons (validade, limite de usos, plano), recuperação de PIX, upsell, funil por origem, modelo do post (igual ao modelo de referência), retenção LGPD, aviso de erros e healthcheck do bot.
 

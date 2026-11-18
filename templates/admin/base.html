@@ -4,6 +4,15 @@
 {%- set active = (p == href) if prefix is none else p.startswith(prefix) -%}
 <a href="{{ href }}" class="nav-link {{ 'active' if active }}">{{ icon(ic) }}<span>{{ text }}</span></a>
 {%- endmacro -%}
+{%- macro navgroup(key, ic, title, prefixes) -%}
+{%- set p = request.url.path -%}
+{%- set ns = namespace(active=false) -%}
+{%- for pre in prefixes %}{% if p.startswith(pre) %}{% set ns.active = true %}{% endif %}{% endfor -%}
+<details class="nav-group {{ 'has-active' if ns.active }}" data-group="{{ key }}" {{ 'open' if ns.active }}>
+  <summary class="nav-group-head">{{ icon(ic) }}<span>{{ title }}</span>{{ icon('chevron', 'chev') }}</summary>
+  <div class="nav-group-body">{{ caller() }}</div>
+</details>
+{%- endmacro -%}
 <!doctype html>
 <html lang="pt-BR">
 <head>
@@ -23,30 +32,36 @@
       <span class="brand-mark">{{ icon('zap') }}</span>
       <span class="brand-text">Telegram Vendas<small>Painel administrativo</small></span>
     </a>
-    <nav class="nav">
-      <div class="nav-section">Visão geral</div>
+    <nav class="nav" aria-label="Menu principal">
       {{ navlink('/admin/', 'dashboard', 'Dashboard') }}
 
-      <div class="nav-section">Vendas · bot próprio</div>
-      {{ navlink('/admin/orders', 'cart', 'Pedidos', '/admin/orders') }}
-      {{ navlink('/admin/payments', 'card', 'Transações', '/admin/payments') }}
-      {{ navlink('/admin/subscriptions', 'repeat', 'Assinaturas', '/admin/subscriptions') }}
-      {{ navlink('/admin/users', 'users', 'Usuários', '/admin/users') }}
-      {{ navlink('/admin/funnel', 'trending', 'Funil por origem', '/admin/funnel') }}
-      {{ navlink('/admin/coupons', 'percent', 'Cupons', '/admin/coupons') }}
-      {{ navlink('/admin/plans', 'package', 'Planos', '/admin/plans') }}
-      {{ navlink('/admin/products', 'file', 'Conteúdos', '/admin/products') }}
-      {{ navlink('/admin/categories', 'folder', 'Categorias', '/admin/categories') }}
+      {% call navgroup('vendas', 'cart', 'Vendas', ['/admin/orders', '/admin/payments', '/admin/subscriptions', '/admin/users', '/admin/funnel', '/admin/coupons']) %}
+        {{ navlink('/admin/orders', 'inbox', 'Pedidos', '/admin/orders') }}
+        {{ navlink('/admin/payments', 'card', 'Transações', '/admin/payments') }}
+        {{ navlink('/admin/subscriptions', 'repeat', 'Assinaturas', '/admin/subscriptions') }}
+        {{ navlink('/admin/users', 'users', 'Usuários', '/admin/users') }}
+        {{ navlink('/admin/funnel', 'trending', 'Funil por origem', '/admin/funnel') }}
+        {{ navlink('/admin/coupons', 'percent', 'Cupons', '/admin/coupons') }}
+      {% endcall %}
 
-      <div class="nav-section">Ofertas · afiliados</div>
-      {{ navlink('/admin/offers/bots', 'megaphone', 'Bots de ofertas', '/admin/offers/bots') }}
-      {{ navlink('/admin/offers', 'tag', 'Ofertas') }}
-      {{ navlink('/admin/offers/settings', 'key', 'Lojas e APIs', '/admin/offers/settings') }}
+      {% call navgroup('catalogo', 'package', 'Catálogo', ['/admin/plans', '/admin/products', '/admin/categories']) %}
+        {{ navlink('/admin/plans', 'package', 'Planos', '/admin/plans') }}
+        {{ navlink('/admin/products', 'file', 'Conteúdos', '/admin/products') }}
+        {{ navlink('/admin/categories', 'folder', 'Categorias', '/admin/categories') }}
+      {% endcall %}
 
-      <div class="nav-section">Sistema</div>
-      {{ navlink('/admin/logs', 'history', 'Histórico', '/admin/logs') }}
-      {{ navlink('/admin/webhooks', 'activity', 'Webhooks', '/admin/webhooks') }}
-      {% if admin.is_superuser %}{{ navlink('/admin/admins', 'shield', 'Administradores', '/admin/admins') }}{% endif %}
+      {% call navgroup('ofertas', 'megaphone', 'Ofertas · afiliados', ['/admin/offers']) %}
+        {{ navlink('/admin/offers/bots', 'megaphone', 'Bots de ofertas', '/admin/offers/bots') }}
+        {{ navlink('/admin/offers', 'tag', 'Ofertas') }}
+        {{ navlink('/admin/offers/settings', 'key', 'Lojas e APIs', '/admin/offers/settings') }}
+      {% endcall %}
+
+      {% call navgroup('sistema', 'settings', 'Sistema', ['/admin/logs', '/admin/webhooks', '/admin/admins', '/admin/account']) %}
+        {{ navlink('/admin/logs', 'history', 'Histórico', '/admin/logs') }}
+        {{ navlink('/admin/webhooks', 'activity', 'Webhooks', '/admin/webhooks') }}
+        {% if admin.is_superuser %}{{ navlink('/admin/admins', 'shield', 'Administradores', '/admin/admins') }}{% endif %}
+        {{ navlink('/admin/account', 'user', 'Minha conta', '/admin/account') }}
+      {% endcall %}
     </nav>
     <div class="sidebar-footer">
       <a href="/admin/account" class="user-chip">
@@ -77,7 +92,6 @@
 </div>
 {% else %}
 <main class="auth">
-  {% for f in flashes %}<div class="alert alert-{{ f.kind }}">{{ f.message }}</div>{% endfor %}
   {% block auth %}{% endblock %}
 </main>
 {% endif %}
