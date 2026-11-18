@@ -3,7 +3,7 @@
 {% from "admin/_icons.html" import icon with context %}
 {% block title %}Bots de ofertas{% endblock %}
 {% block content %}
-{% call page_header('Bots de ofertas', 'Cada bot alimenta os seus próprios canais do Telegram e grupos do WhatsApp com ofertas do Mercado Livre e da Shopee.') %}
+{% call page_header('Bots de ofertas', 'Cada bot alimenta os seus próprios canais do Telegram e grupos do WhatsApp com ofertas do Mercado Livre, da Shopee e da Amazon.') %}
   <a class="btn btn-secondary" href="/admin/offers/settings">{{ icon('key') }}Lojas e APIs</a>
 {% endcall %}
 
@@ -11,7 +11,7 @@
 <div class="alert alert-warn">{{ icon('alert') }}<span>O processo do módulo de ofertas (<code>offers_bot</code>) não está dando sinal de vida. As publicações automáticas estão paradas até ele voltar.</span></div>
 {% endif %}
 {% if not credentials_ok %}
-<div class="alert alert-info">{{ icon('info') }}<span>Falta cadastrar a conta de pelo menos uma loja (Mercado Livre e/ou Shopee). Vale para todos os bots: <a href="/admin/offers/settings">configurar agora</a>.</span></div>
+<div class="alert alert-info">{{ icon('info') }}<span>Falta cadastrar a conta de pelo menos uma loja (Mercado Livre, Shopee ou Amazon). Vale para todos os bots: <a href="/admin/offers/settings">configurar agora</a>.</span></div>
 {% endif %}
 
 <div class="bot-grid">

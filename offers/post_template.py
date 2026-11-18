@@ -39,7 +39,7 @@ PLACEHOLDERS: dict[str, str] = {
     "link": "Link de afiliado (ou do produto)",
     "frete": "“Frete grátis” quando houver",
     "rodape": "Rodapé configurado no painel",
-    "loja": "Loja da oferta (Mercado Livre ou Shopee)",
+    "loja": "Loja da oferta (Mercado Livre, Shopee ou Amazon)",
 }
 
 _TOKEN = re.compile(r"\{(\w+)\}")

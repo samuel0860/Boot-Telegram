@@ -714,4 +714,5 @@ progress::-moz-progress-bar { background: var(--ok); border-radius: 999px; }
 .module-tag { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
   color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; margin-left: 6px; vertical-align: 2px; }
 .badge-store-shopee { background: rgba(238, 77, 45, .14); color: #ff7a59; border: 1px solid rgba(238, 77, 45, .3); }
+.badge-store-amazon { background: rgba(255, 153, 0, .12); color: #ffb347; border: 1px solid rgba(255, 153, 0, .3); }
 .badge-store-mercadolivre { background: rgba(255, 230, 0, .1); color: #f5d90a; border: 1px solid rgba(255, 230, 0, .25); }

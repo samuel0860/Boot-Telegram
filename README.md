@@ -30,7 +30,7 @@ O sistema tem **dois módulos independentes**, cada um com processo, bot(s) e co
 
 | | Módulo de **VENDAS** (bot próprio) | Módulo de **OFERTAS** (afiliados) |
 |---|---|---|
-| Objetivo | Vender **seus** produtos/serviços pelo Telegram | Alimentar **seus grupos de ofertas** com promoções do Mercado Livre e da Shopee |
+| Objetivo | Vender **seus** produtos/serviços pelo Telegram | Alimentar **seus grupos de ofertas** com promoções do Mercado Livre, da Shopee e da Amazon |
 | Bots | **1** bot do Telegram (`TELEGRAM_BOT_TOKEN` no `.env`) | **Vários** bots, cadastrados no painel. Cada um com token próprio do Telegram e número próprio de WhatsApp |
 | Dinheiro | Gateway de pagamento configurado por você (hoje Mercado Pago, PIX), direto na **sua conta** | Comissão do programa de afiliados (sem cobrança no sistema) |
 | Processo (compose) | `telegram_bot` → `python sales_bot.py` | `offers_bot` → `python offers_bot.py` |
@@ -112,6 +112,7 @@ O sistema tem **dois módulos independentes**, cada um com processo, bot(s) e co
 │   ├── post_template.py    # Modelo do post (Telegram + WhatsApp)
 │   ├── mercadolivre.py     # Cliente da API do Mercado Livre
 │   ├── shopee.py           # Cliente da API de afiliados da Shopee (GraphQL assinado)
+│   ├── amazon.py           # Cliente da Creators API da Amazon (OAuth2)
 │   ├── alerts.py           # Alertas e resumo diário de cada bot de ofertas
 │   ├── telegram_bot.py     # Handlers do Telegram de cada bot de ofertas
 │   └── runtime.py          # Laço do processo: liga/desliga bots, busca, publica

@@ -21,7 +21,7 @@ from models import AppSetting
 
 logger = logging.getLogger(__name__)
 
-SECRET_KEYS = {"ml_secret_key", "shopee_secret"}
+SECRET_KEYS = {"ml_secret_key", "shopee_secret", "amazon_secret"}
 
 DEFAULTS: dict[str, str] = {
     # MÓDULO DE OFERTAS — conta do Mercado Livre (uma para todos os bots de ofertas)
@@ -30,6 +30,11 @@ DEFAULTS: dict[str, str] = {
     # MÓDULO DE OFERTAS — conta de afiliado da Shopee (Open API)
     "shopee_app_id": "",
     "shopee_secret": "",
+    # MÓDULO DE OFERTAS — conta de associado da Amazon (Creators API)
+    "amazon_credential_id": "",
+    "amazon_secret": "",
+    "amazon_partner_tag": "",
+    "amazon_version": "3.1",
     "offers_heartbeat_at": "",
     # MÓDULO DE VENDAS
     "bot_heartbeat_at": "",

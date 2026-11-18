@@ -63,7 +63,7 @@ async def cmd_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     if await is_admin(update):
         await update.effective_message.reply_text(
             "🤖 <b>Bot de ofertas</b>\n\n"
-            "• Cole um link do Mercado Livre ou da Shopee e eu monto o post (dá para escrever "
+            "• Cole um link do Mercado Livre, da Shopee ou da Amazon e eu monto o post (dá para escrever "
             "<code>chamada: ...</code> e <code>cupom: ...</code> em linhas abaixo do link).\n"
             "• Encaminhe um post de um canal para descobrir o ID dele.\n"
             "• /status — situação deste bot\n• /id — seu ID do Telegram",
@@ -185,7 +185,7 @@ async def on_link(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await waiting.delete()
     caption = "👀 <b>Prévia do post</b>\n\n" + preview.caption
     tips = []
-    if not any(h in preview.link for h in ("meli.la", "shopee", "shp.ee", "shope.ee")):
+    if not any(h in preview.link for h in ("meli.la", "shopee", "shp.ee", "shope.ee", "amazon.com.br", "amzn.to", "a.co/")):
         tips.append("Sem link de afiliado: envie o seu link meli.la para ganhar comissão.")
     if not preview.has_extras:
         tips.append("Dica: escreva <code>chamada: ...</code> e <code>cupom: ...</code> em linhas abaixo do link.")
@@ -249,6 +249,6 @@ def build_application(token: str, bot_id: int) -> Application:
     app.add_handler(CallbackQueryHandler(on_callback, pattern=r"^conv:"))
     app.add_handler(MessageHandler(private & filters.FORWARDED, on_forwarded))
     app.add_handler(MessageHandler(
-        private & filters.TEXT & ~filters.COMMAND & filters.Regex(r"(?i)(meli\.la|mercadoli[vb]re\.com|shopee\.com\.br|shp\.ee|shope\.ee)"), on_link))
+        private & filters.TEXT & ~filters.COMMAND & filters.Regex(r"(?i)(meli\.la|mercadoli[vb]re\.com|shopee\.com\.br|shp\.ee|shope\.ee|amazon\.com\.br|amzn\.to|a\.co/)"), on_link))
     app.add_error_handler(on_error)
     return app

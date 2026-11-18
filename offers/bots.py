@@ -44,8 +44,17 @@ def config_for(session: Session, bot: OfferBot) -> offer_config.BotConfig:
     values = settings_service.get_all(session)
     return offer_config.parse(
         bot.config, enabled=bot.is_active,
-        app_id=values.get("ml_app_id", ""), secret_key=values.get("ml_secret_key", ""),
-        shopee_app_id=values.get("shopee_app_id", ""), shopee_secret=values.get("shopee_secret", ""))
+        **store_kwargs(values))
+
+
+def store_kwargs(values: dict[str, str]) -> dict[str, str]:
+    """Credenciais das três lojas (módulo de ofertas) no formato de offer_config.parse."""
+    return {
+        "app_id": values.get("ml_app_id", ""), "secret_key": values.get("ml_secret_key", ""),
+        "shopee_app_id": values.get("shopee_app_id", ""), "shopee_secret": values.get("shopee_secret", ""),
+        "amazon_id": values.get("amazon_credential_id", ""), "amazon_secret": values.get("amazon_secret", ""),
+        "amazon_tag": values.get("amazon_partner_tag", ""), "amazon_version": values.get("amazon_version", "3.1"),
+    }
 
 
 def token_of(bot: OfferBot) -> str:

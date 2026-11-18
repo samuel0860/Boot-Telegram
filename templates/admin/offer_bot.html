@@ -21,11 +21,11 @@
   <section class="card">
     <div class="card-header"><div class="card-icon">{{ icon('megaphone') }}</div>
       <div><h2>Como este bot funciona</h2>
-        <p>De tempos em tempos ele busca ofertas no Mercado Livre e/ou na Shopee com os <b>filtros deste bot</b> e publica, no <b>modelo deste bot</b>,
+        <p>De tempos em tempos ele busca ofertas no Mercado Livre, na Shopee e/ou na Amazon com os <b>filtros deste bot</b> e publica, no <b>modelo deste bot</b>,
           nos <b>destinos deste bot</b>. Outros bots de ofertas têm as próprias configurações.</p></div></div>
     <ul class="checklist">
       {% set items = [
-        (credentials_ok, 'Loja configurada (Mercado Livre e/ou Shopee)', '/admin/offers/settings'),
+        (credentials_ok, 'Loja configurada (Mercado Livre, Shopee ou Amazon)', '/admin/offers/settings'),
         (bot.telegram_username, 'Token do Telegram (bot próprio no @BotFather)', '?tab=telegram'),
         (tg_targets|selectattr('is_active')|list|length > 0, 'Canal/grupo do Telegram cadastrado', '?tab=telegram'),
         (cfg.wa_enabled and wa_targets|length > 0, 'WhatsApp conectado com grupos (opcional)', '?tab=whatsapp'),
@@ -241,6 +241,7 @@
       <div class="pills">
         <label class="pill"><input type="checkbox" name="src_mercadolivre" value="1" {{ 'checked' if cfg.use_mercadolivre }}><span>Mercado Livre{% if not cfg.credentials_ok %} <small>· sem credenciais</small>{% endif %}</span></label>
         <label class="pill"><input type="checkbox" name="src_shopee" value="1" {{ 'checked' if cfg.use_shopee }}><span>Shopee{% if not cfg.shopee_credentials_ok %} <small>· sem credenciais</small>{% endif %}</span></label>
+        <label class="pill"><input type="checkbox" name="src_amazon" value="1" {{ 'checked' if cfg.use_amazon }}><span>Amazon{% if not cfg.amazon_credentials_ok %} <small>· sem credenciais</small>{% endif %}</span></label>
       </div>
     </section>
     <section class="card">
@@ -270,12 +271,22 @@
     </section>
     <section class="card">
       <h2 class="mb-3">O que buscar na Shopee</h2>
-      <p class="hint mb-3">Busca por palavras-chave e/ou IDs de categoria. Sem nada, pega as ofertas mais vendidas. Os filtros acima (desconto, preço, palavras bloqueadas) valem para as duas lojas.</p>
+      <p class="hint mb-3">Busca por palavras-chave e/ou IDs de categoria. Sem nada, pega as ofertas mais vendidas. Os filtros acima (desconto, preço, palavras bloqueadas) valem para todas as lojas.</p>
       <div class="grid2">
         <label>Palavras-chave <small>até 10, separadas por vírgula</small><input name="shopee_keywords" value="{{ values.shopee_keywords }}" placeholder="fone bluetooth, air fryer"></label>
         <label>Ordenar por
           <select name="shopee_sort">{% for key, label in shopee_sorts.items() %}<option value="{{ key }}" {{ 'selected' if cfg.shopee_sort == key }}>{{ label }}</option>{% endfor %}</select></label>
         <label>Categorias <small>IDs numéricos da Shopee, opcional</small><input name="shopee_categories" value="{{ values.shopee_categories }}" placeholder="100636, 100013"></label>
+      </div>
+    </section>
+    <section class="card">
+      <h2 class="mb-3">O que buscar na Amazon</h2>
+      <p class="hint mb-3">Busca por palavras-chave e/ou IDs de categoria (browse node). A Amazon já devolve só produtos com o <b>desconto mínimo</b> definido acima. Sem nada preenchido, procura “oferta”.</p>
+      <div class="grid2">
+        <label>Palavras-chave <small>até 10, separadas por vírgula</small><input name="amazon_keywords" value="{{ values.amazon_keywords }}" placeholder="echo dot, kindle, air fryer"></label>
+        <label>Ordenar por
+          <select name="amazon_sort">{% for key, label in amazon_sorts.items() %}<option value="{{ key }}" {{ 'selected' if cfg.amazon_sort == key }}>{{ label }}</option>{% endfor %}</select></label>
+        <label>Categorias <small>números do browse node, opcional</small><input name="amazon_nodes" value="{{ values.amazon_nodes }}" placeholder="16209062011, 16243890011"></label>
       </div>
     </section>
     <section class="card">

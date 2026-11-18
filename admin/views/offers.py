@@ -1,5 +1,5 @@
 """MÓDULO DE OFERTAS no painel: bots de ofertas, destinos (Telegram/WhatsApp),
-busca, modelo do post, ofertas de cada bot e as contas das lojas (Mercado Livre e Shopee)."""
+busca, modelo do post, ofertas de cada bot e as contas das lojas (Mercado Livre, Shopee e Amazon)."""
 from __future__ import annotations
 
 import re
@@ -18,9 +18,10 @@ from core.alert_service import OFFERS_HEARTBEAT
 from core.audit import utcnow
 from database import get_db
 from models import AdminUser, OfferBot, OfferPost, OfferStatus, OfferTarget, PromoOffer, TargetChannel
+from offers import amazon, collector, post_template, whatsapp
 from offers import bots as bot_service
-from offers import collector, post_template, whatsapp
 from offers import config as offer_config
+from offers.amazon import AmazonError
 from offers.mercadolivre import MLError
 from offers.posting import whatsapp_caption
 from offers.shopee import SORT_LABELS, ShopeeError
@@ -31,6 +32,7 @@ router = APIRouter()
 # Podem ser substituídas nos testes
 ml_client_factory = collector.default_client_factory
 shopee_client_factory = collector.default_shopee_factory
+amazon_client_factory = collector.default_amazon_factory
 wa_client_factory = whatsapp.default_client
 telegram_get_me = bot_service.telegram_get_me
 
@@ -64,7 +66,8 @@ def bots_list(request: Request, admin: AdminUser = Depends(current_admin), db: S
     return render(request, "admin/offers_bots.html", admin, bots=bots, stats=stats,
                   worker_online=alert_service.bot_online(values, key=OFFERS_HEARTBEAT),
                   credentials_ok=bool((values.get("ml_app_id") and values.get("ml_secret_key"))
-                                      or (values.get("shopee_app_id") and values.get("shopee_secret"))),
+                                      or (values.get("shopee_app_id") and values.get("shopee_secret"))
+                                      or (values.get("amazon_credential_id") and values.get("amazon_secret"))),
                   sales_bot=settings.telegram_bot_username)
 
 
@@ -103,7 +106,7 @@ def bot_page(bot_id: int, request: Request, tab: str = "geral", qr: int = 0,
     elif tab == "whatsapp":
         ctx.update(_whatsapp_context(bot, cfg, admin, bool(qr)))
     elif tab == "busca":
-        ctx.update(shopee_sorts=SORT_LABELS, categories=offer_config.ML_CATEGORIES, selected_categories=set(cfg.categories),
+        ctx.update(shopee_sorts=SORT_LABELS, amazon_sorts=amazon.SORT_LABELS, categories=offer_config.ML_CATEGORIES, selected_categories=set(cfg.categories),
                    extra_categories=", ".join(c for c in cfg.categories if c not in offer_config.ML_CATEGORIES))
     elif tab == "post":
         ctx.update(placeholders=post_template.PLACEHOLDERS,
@@ -265,14 +268,21 @@ def bot_search(
     shopee_keywords: str = Form("", max_length=1000),
     shopee_categories: str = Form("", max_length=300),
     shopee_sort: str = Form("sales", max_length=20),
+    src_amazon: str = Form(""),
+    amazon_keywords: str = Form("", max_length=1000),
+    amazon_nodes: str = Form("", max_length=300),
+    amazon_sort: str = Form("featured", max_length=20),
     _csrf: None = Depends(verify_csrf),
     admin: AdminUser = Depends(require_superuser),
     db: Session = Depends(get_db),
 ):
     bot = _bot(db, bot_id, lock=True)
     errors = []
-    if not src_mercadolivre and not src_shopee:
-        errors.append("Marque pelo menos uma loja (Mercado Livre e/ou Shopee).")
+    if not src_mercadolivre and not src_shopee and not src_amazon:
+        errors.append("Marque pelo menos uma loja (Mercado Livre, Shopee ou Amazon).")
+    bad_nodes = [c for c in offer_config.split_list(amazon_nodes) if not c.isdigit()]
+    if bad_nodes:
+        errors.append(f"Categoria da Amazon inválida: {', '.join(bad_nodes)} (use os números das categorias).")
     bad_cats = [c for c in offer_config.split_list(shopee_categories) if not c.isdigit()]
     if bad_cats:
         errors.append(f"Categoria da Shopee inválida: {', '.join(bad_cats)} (use os números das categorias).")
@@ -298,6 +308,8 @@ def bot_search(
         "src_mercadolivre": "1" if src_mercadolivre else "0", "src_shopee": "1" if src_shopee else "0",
         "shopee_keywords": shopee_keywords.strip(), "shopee_categories": shopee_categories.strip(),
         "shopee_sort": shopee_sort,
+        "src_amazon": "1" if src_amazon else "0", "amazon_keywords": amazon_keywords.strip(),
+        "amazon_nodes": amazon_nodes.strip(), "amazon_sort": amazon_sort,
     })
     audit(db, request, admin, "offer_bot_search_saved", bot_id=bot.id, categories=len(all_categories))
     db.commit()
@@ -334,7 +346,7 @@ def bot_template(
     return redirect(_back(bot_id, "post"))
 
 
-def _test_stores(cfg, ml: bool, shop: bool) -> list[dict]:
+def _test_stores(cfg, ml: bool, shop: bool, amz: bool = False) -> list[dict]:
     steps: list[tuple[str, bool, str]] = []
     if ml:
         try:
@@ -349,6 +361,12 @@ def _test_stores(cfg, ml: bool, shop: bool) -> list[dict]:
                 steps += [(f"Shopee · {s}", ok, d) for s, ok, d in client.test_connection()]
         except ShopeeError as exc:
             steps.append(("Shopee · Autenticação", False, str(exc)))
+    if amz:
+        try:
+            with amazon_client_factory(cfg) as client:
+                steps += [(f"Amazon · {s}", ok, d) for s, ok, d in client.test_connection()]
+        except AmazonError as exc:
+            steps.append(("Amazon · Autenticação", False, str(exc)))
     if not steps:
         steps.append(("Lojas", False, "nenhuma loja ligada/configurada"))
     return [{"step": s, "ok": ok, "detail": d[:300]} for s, ok, d in steps]
@@ -358,7 +376,7 @@ def _test_stores(cfg, ml: bool, shop: bool) -> list[dict]:
 def bot_test(bot_id: int, request: Request, _csrf: None = Depends(verify_csrf),
              admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
     cfg = bot_service.config_for(db, _bot(db, bot_id))
-    request.session["offers_test"] = _test_stores(cfg, cfg.use_mercadolivre, cfg.use_shopee)
+    request.session["offers_test"] = _test_stores(cfg, cfg.use_mercadolivre, cfg.use_shopee, cfg.use_amazon)
     return redirect(_back(bot_id))
 
 
@@ -367,6 +385,7 @@ def bot_run(bot_id: int, request: Request, _csrf: None = Depends(verify_csrf),
             admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
     _bot(db, bot_id)
     result = collector.run_cycle(bot_id, ml_client_factory, shopee_factory=shopee_client_factory,
+                                 amazon_factory=amazon_client_factory,
                                  triggered_by=f"painel:{admin.username}")
     kind = "error" if result.errors and not result.eligible else ("warn" if result.errors else "ok")
     flash(request, "Busca concluída: " + result.summary(), kind)
@@ -623,7 +642,7 @@ def offer_restore(bot_id: int, offer_id: int, request: Request, _csrf: None = De
 
 
 # --------------------------------------------------------------------------- #
-# Configurações do módulo: contas das lojas (Mercado Livre e Shopee)
+# Configurações do módulo: contas das lojas (Mercado Livre, Shopee e Amazon)
 # --------------------------------------------------------------------------- #
 @router.get("/offers/settings", response_class=HTMLResponse)
 def offers_settings(request: Request, admin: AdminUser = Depends(current_admin), db: Session = Depends(get_db)):
@@ -631,6 +650,8 @@ def offers_settings(request: Request, admin: AdminUser = Depends(current_admin),
     return render(request, "admin/offers_settings.html", admin, values=values,
                   secret_mask=settings_service.mask(values.get("ml_secret_key", "")),
                   shopee_mask=settings_service.mask(values.get("shopee_secret", "")),
+                  amazon_mask=settings_service.mask(values.get("amazon_secret", "")),
+                  amazon_versions=amazon.VERSIONS,
                   test_results=request.session.pop("offers_test", None),
                   worker_online=alert_service.bot_online(values, key=OFFERS_HEARTBEAT),
                   sales_bot=settings.telegram_bot_username)
@@ -640,8 +661,26 @@ def offers_settings(request: Request, admin: AdminUser = Depends(current_admin),
 def offers_settings_save(request: Request, store: str = Form("mercadolivre"),
                          ml_app_id: str = Form("", max_length=64), ml_secret_key: str = Form("", max_length=128),
                          shopee_app_id: str = Form("", max_length=64), shopee_secret: str = Form("", max_length=128),
+                         amazon_credential_id: str = Form("", max_length=128),
+                         amazon_secret: str = Form("", max_length=256),
+                         amazon_partner_tag: str = Form("", max_length=64),
+                         amazon_version: str = Form("3.1", max_length=8),
                          _csrf: None = Depends(verify_csrf), admin: AdminUser = Depends(require_superuser),
                          db: Session = Depends(get_db)):
+    if store == "amazon":
+        tag = amazon_partner_tag.strip()
+        if tag and not amazon.valid_tag(tag):
+            flash(request, "Partner Tag inválido: use o seu ID de associado, no formato meusite-20.", "error")
+            return redirect("/admin/offers/settings")
+        values = {"amazon_credential_id": amazon_credential_id.strip(), "amazon_partner_tag": tag,
+                  "amazon_version": amazon_version if amazon_version in amazon.VERSIONS else "3.1"}
+        if amazon_secret.strip():  # vazio = mantém o secret atual
+            values["amazon_secret"] = amazon_secret.strip()
+        settings_service.set_values(db, values, admin.id)
+        audit(db, request, admin, "store_credentials_saved", store=store, secret_changed=bool(amazon_secret.strip()))
+        db.commit()
+        flash(request, "Credenciais da Amazon salvas. Valem para todos os bots de ofertas.")
+        return redirect("/admin/offers/settings")
     if store == "shopee":
         app_id, secret, label = shopee_app_id.strip(), shopee_secret.strip(), "da Shopee"
         keys = ("shopee_app_id", "shopee_secret")
@@ -665,8 +704,6 @@ def offers_settings_save(request: Request, store: str = Form("mercadolivre"),
 def offers_settings_test(request: Request, store: str = Form("mercadolivre"), _csrf: None = Depends(verify_csrf),
                          admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
     values = settings_service.get_all(db)
-    cfg = offer_config.parse({}, app_id=values.get("ml_app_id", ""), secret_key=values.get("ml_secret_key", ""),
-                             shopee_app_id=values.get("shopee_app_id", ""),
-                             shopee_secret=values.get("shopee_secret", ""))
-    request.session["offers_test"] = _test_stores(cfg, store != "shopee", store == "shopee")
+    cfg = offer_config.parse({}, **bot_service.store_kwargs(values))
+    request.session["offers_test"] = _test_stores(cfg, store == "mercadolivre", store == "shopee", store == "amazon")
     return redirect("/admin/offers/settings")

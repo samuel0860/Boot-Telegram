@@ -13,7 +13,7 @@ from offers import bots as bot_service
 from offers import post_template
 from offers.config import BotConfig
 
-STORE_LABELS = {"mercadolivre": "Mercado Livre", "shopee": "Shopee"}
+STORE_LABELS = {"mercadolivre": "Mercado Livre", "shopee": "Shopee", "amazon": "Amazon"}
 
 
 def post_data(offer: PromoOffer) -> post_template.PostData:

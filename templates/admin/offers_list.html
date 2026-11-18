@@ -3,7 +3,7 @@
 {% from "admin/_icons.html" import icon with context %}
 {% block title %}Ofertas{% endblock %}
 {% block content %}
-{% call page_header('Ofertas', 'O que cada bot encontrou no Mercado Livre e na Shopee. Defina chamada, cupom e link de afiliado e publique.') %}
+{% call page_header('Ofertas', 'O que cada bot encontrou no Mercado Livre, na Shopee e na Amazon. Defina chamada, cupom e link de afiliado e publique.') %}
   <a class="btn btn-secondary" href="/admin/offers/bots/{{ current.id }}">{{ icon('sliders') }}Configurar este bot</a>
 {% endcall %}
 
@@ -39,7 +39,7 @@
         {% if o.original_price %}<span class="price-old">{{ o.original_price|brl }}</span>{% endif %}
         <span class="price-new">{{ o.price|brl }}</span>
         {% if o.discount_pct %}<span class="badge badge-discount">-{{ o.discount_pct }}%</span>{% endif %}
-        <span class="badge badge-store-{{ o.platform }}">{{ 'Shopee' if o.platform == 'shopee' else 'Mercado Livre' }}</span>
+        <span class="badge badge-store-{{ o.platform }}">{{ {'shopee': 'Shopee', 'amazon': 'Amazon'}.get(o.platform, 'Mercado Livre') }}</span>
         {{ badge(p.status.value) }}
         {% set wa = {'pending': ('WhatsApp: na fila', 'warn'), 'sent': ('WhatsApp: enviada', 'ok'), 'failed': ('WhatsApp: falhou', 'danger'), 'skipped': ('WhatsApp: expirou', 'muted')} %}
         {% if p.wa_status.value in wa %}<span class="badge badge-{{ wa[p.wa_status.value][1] }}"><span class="dot"></span>{{ wa[p.wa_status.value][0] }}</span>{% endif %}
@@ -60,7 +60,7 @@
         <div class="offer-fields">
           <input name="headline" value="{{ o.headline or '' }}" placeholder="Chamada: ex. PRECIN NA 43&quot; DA PHILCO (vazio = padrão)" maxlength="120">
           <input name="coupon" value="{{ o.coupon or '' }}" placeholder="Cupom (opcional)" maxlength="40">
-          <input name="affiliate_url" value="{{ o.affiliate_url or '' }}" placeholder="Link de afiliado: https://meli.la/... (Shopee: já vem preenchido)" maxlength="500">
+          <input name="affiliate_url" value="{{ o.affiliate_url or '' }}" placeholder="Link de afiliado: https://meli.la/... (Shopee/Amazon: já vem preenchido)" maxlength="500">
         </div>
         <div class="row-form">
           <button class="btn btn-sm btn-secondary" formaction="{{ base }}/save">{{ icon('save') }}Salvar</button>
@@ -85,7 +85,7 @@
 {% else %}
   <div class="card empty">
     <p><b>Nenhuma oferta nesta lista.</b></p>
-    <p class="hint mt-2">Na página do bot, clique em “Buscar ofertas agora” — ou cole um link do Mercado Livre/Shopee na conversa com o bot no Telegram.</p>
+    <p class="hint mt-2">Na página do bot, clique em “Buscar ofertas agora” — ou cole um link do Mercado Livre/Shopee/Amazon na conversa com o bot no Telegram.</p>
   </div>
 {% endfor %}
 </div>

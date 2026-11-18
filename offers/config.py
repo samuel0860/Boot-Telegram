@@ -1,6 +1,6 @@
 """Configuração de cada bot de ofertas (guardada em JSON em offer_bots.config).
 
-As credenciais das lojas (Mercado Livre e Shopee) são do MÓDULO — uma conta de
+As credenciais das lojas (Mercado Livre, Shopee e Amazon) são do MÓDULO — uma conta de
 cada para todos os bots — e ficam em app_settings, com os segredos criptografados.
 Cada bot escolhe de quais lojas busca ofertas.
 """
@@ -25,6 +25,11 @@ DEFAULT_CONFIG: dict[str, str] = {
     "shopee_keywords": "",
     "shopee_categories": "",           # IDs de categoria da Shopee (opcional)
     "shopee_sort": "sales",            # sales | commission | relevance | price_asc
+    # Amazon
+    "src_amazon": "0",
+    "amazon_keywords": "",
+    "amazon_nodes": "",                # IDs de categoria (browse node) da Amazon (opcional)
+    "amazon_sort": "featured",         # featured | relevance | price_asc | reviews | newest
     # Busca no Mercado Livre
     "mode": "auto",                    # auto | manual
     "interval_minutes": "45",
@@ -147,6 +152,14 @@ class BotConfig:
     shopee_keywords: list[str] = field(default_factory=list)
     shopee_categories: list[int] = field(default_factory=list)
     shopee_sort: str = "sales"
+    use_amazon: bool = False
+    amazon_id: str = ""
+    amazon_secret: str = ""
+    amazon_tag: str = ""
+    amazon_version: str = "3.1"
+    amazon_keywords: list[str] = field(default_factory=list)
+    amazon_nodes: list[str] = field(default_factory=list)
+    amazon_sort: str = "featured"
 
     @property
     def credentials_ok(self) -> bool:
@@ -158,6 +171,10 @@ class BotConfig:
         return bool(self.shopee_app_id and self.shopee_secret)
 
     @property
+    def amazon_credentials_ok(self) -> bool:
+        return bool(self.amazon_id and self.amazon_secret and self.amazon_tag)
+
+    @property
     def ml_ready(self) -> bool:
         return self.use_mercadolivre and self.credentials_ok
 
@@ -166,9 +183,17 @@ class BotConfig:
         return self.use_shopee and self.shopee_credentials_ok
 
     @property
+    def amazon_ready(self) -> bool:
+        return self.use_amazon and self.amazon_credentials_ok
+
+    @property
+    def any_store(self) -> bool:
+        return self.use_mercadolivre or self.use_shopee or self.use_amazon
+
+    @property
     def sources_ready(self) -> bool:
         """Pelo menos uma loja ligada e com credenciais."""
-        return self.ml_ready or self.shopee_ready
+        return self.ml_ready or self.shopee_ready or self.amazon_ready
 
     def missing_credentials(self) -> list[str]:
         missing = []
@@ -176,6 +201,8 @@ class BotConfig:
             missing.append("Mercado Livre")
         if self.use_shopee and not self.shopee_credentials_ok:
             missing.append("Shopee")
+        if self.use_amazon and not self.amazon_credentials_ok:
+            missing.append("Amazon")
         return missing
 
     def is_active_time(self, now_local: time) -> bool:
@@ -198,7 +225,8 @@ def merged(raw: dict | None) -> dict[str, str]:
 
 
 def parse(raw: dict | None, *, enabled: bool = False, app_id: str = "", secret_key: str = "",
-          shopee_app_id: str = "", shopee_secret: str = "") -> BotConfig:
+          shopee_app_id: str = "", shopee_secret: str = "", amazon_id: str = "", amazon_secret: str = "",
+          amazon_tag: str = "", amazon_version: str = "3.1") -> BotConfig:
     v = merged(raw)
     start, end = parse_hours(v["active_hours"])
     return BotConfig(
@@ -236,4 +264,13 @@ def parse(raw: dict | None, *, enabled: bool = False, app_id: str = "", secret_k
         shopee_keywords=split_list(v["shopee_keywords"])[:10],
         shopee_categories=[int(c) for c in split_list(v["shopee_categories"]) if c.isdigit()][:10],
         shopee_sort=v["shopee_sort"] if v["shopee_sort"] in ("sales", "commission", "relevance", "price_asc") else "sales",
+        use_amazon=v["src_amazon"] == "1",
+        amazon_id=amazon_id.strip(),
+        amazon_secret=amazon_secret.strip(),
+        amazon_tag=amazon_tag.strip(),
+        amazon_version=amazon_version.strip() or "3.1",
+        amazon_keywords=split_list(v["amazon_keywords"])[:10],
+        amazon_nodes=[c for c in split_list(v["amazon_nodes"]) if c.isdigit()][:10],
+        amazon_sort=v["amazon_sort"] if v["amazon_sort"] in ("featured", "relevance", "price_asc", "reviews", "newest")
+        else "featured",
     )

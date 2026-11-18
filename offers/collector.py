@@ -1,4 +1,4 @@
-"""Coleta de ofertas (Mercado Livre e Shopee), POR BOT de ofertas.
+"""Coleta de ofertas (Mercado Livre, Shopee e Amazon), POR BOT de ofertas.
 
 Cada bot busca com os próprios filtros (categorias, palavras-chave, desconto...).
 O produto fica em promo_offers (compartilhado) e o que o bot faz com ele fica em
@@ -23,6 +23,7 @@ from core.audit import log_event, utcnow
 from database import session_scope
 from models import OfferBot, OfferPost, OfferStatus, PromoOffer, TargetChannel, WaStatus
 from offers import bots as bot_service
+from offers.amazon import AmazonAuthError, AmazonClient, AmazonError
 from offers.config import BotConfig
 from offers.mercadolivre import MercadoLivreClient, MLAuthError, MLError, MLProduct, Product
 from offers.shopee import ShopeeAuthError, ShopeeClient, ShopeeError
@@ -35,6 +36,7 @@ MAX_LOOKUPS_PER_CYCLE = 60
 
 ClientFactory = Callable[[BotConfig], MercadoLivreClient]
 ShopeeFactory = Callable[[BotConfig], ShopeeClient]
+AmazonFactory = Callable[[BotConfig], AmazonClient]
 
 
 def default_client_factory(cfg: BotConfig) -> MercadoLivreClient:
@@ -43,6 +45,10 @@ def default_client_factory(cfg: BotConfig) -> MercadoLivreClient:
 
 def default_shopee_factory(cfg: BotConfig) -> ShopeeClient:
     return ShopeeClient(cfg.shopee_app_id, cfg.shopee_secret)
+
+
+def default_amazon_factory(cfg: BotConfig) -> AmazonClient:
+    return AmazonClient(cfg.amazon_id, cfg.amazon_secret, cfg.amazon_tag, cfg.amazon_version)
 
 
 @dataclass
@@ -141,7 +147,7 @@ def upsert_offer(session: Session, p: MLProduct, now: datetime) -> tuple[PromoOf
         offer = PromoOffer(platform=platform, external_id=p.external_id)
         session.add(offer)
     if p.affiliate_url and not offer.affiliate_url:
-        offer.affiliate_url = p.affiliate_url  # Shopee: a API já devolve o link de afiliado da sua conta
+        offer.affiliate_url = p.affiliate_url  # Shopee/Amazon: a API já devolve o link de afiliado da sua conta
     offer.title = p.title
     offer.product_url = p.url
     offer.image_url = p.image
@@ -224,8 +230,37 @@ def collect_shopee(client: ShopeeClient, cfg: BotConfig, result: CycleResult) ->
     return list(products.values())
 
 
+def collect_amazon(client: AmazonClient, cfg: BotConfig, result: CycleResult) -> list[Product]:
+    """Ofertas da Amazon por palavra-chave e/ou categoria (browse node).
+
+    A busca já pede à Amazon só produtos com o desconto mínimo do bot.
+    """
+    products: dict[str, Product] = {}
+    searches: list[tuple[str, dict]] = [(f"amazon:{kw}"[:100], {"keywords": kw}) for kw in cfg.amazon_keywords]
+    searches += [(f"amazon:cat {n}", {"browse_node_id": n}) for n in cfg.amazon_nodes]
+    if not searches:
+        searches = [("amazon:ofertas", {"keywords": "oferta"})]
+    for name, kwargs in searches:
+        try:
+            for p in client.search(sort=cfg.amazon_sort, min_saving=cfg.min_discount, source=name, **kwargs):
+                products.setdefault(p.external_id, p)
+        except AmazonAuthError:
+            raise
+        except AmazonError as exc:
+            result.errors.append(f"{name}: {exc}")
+    return list(products.values())
+
+
+MISSING_MSG = {
+    "Mercado Livre": "Configure o App ID e a Secret Key do Mercado Livre em Ofertas → Lojas e APIs.",
+    "Shopee": "Configure o AppID e a Senha da Shopee em Ofertas → Lojas e APIs.",
+    "Amazon": "Configure o Credential ID, o Secret e o Partner Tag da Amazon em Ofertas → Lojas e APIs.",
+}
+
+
 def run_cycle(bot_id: int, client_factory: ClientFactory = default_client_factory, *,
-              shopee_factory: ShopeeFactory = default_shopee_factory, triggered_by: str = "bot") -> CycleResult:
+              shopee_factory: ShopeeFactory = default_shopee_factory,
+              amazon_factory: AmazonFactory = default_amazon_factory, triggered_by: str = "bot") -> CycleResult:
     """Executa um ciclo completo do bot (todas as lojas ligadas nele).
 
     Nunca lança exceção: erros vão em result.errors.
@@ -238,10 +273,8 @@ def run_cycle(bot_id: int, client_factory: ClientFactory = default_client_factor
             return result
         cfg = bot_service.config_for(session, bot)
     for store in cfg.missing_credentials():
-        result.errors.append("Configure o AppID e a Senha da Shopee em Ofertas → Lojas e APIs."
-                             if store == "Shopee" else
-                             "Configure o App ID e a Secret Key do Mercado Livre em Ofertas → Lojas e APIs.")
-    if not cfg.use_mercadolivre and not cfg.use_shopee:
+        result.errors.append(MISSING_MSG[store])
+    if not cfg.any_store:
         result.errors.append("Nenhuma loja ligada neste bot (aba Busca e filtros).")
 
     products: list[Product] = []
@@ -265,6 +298,17 @@ def run_cycle(bot_id: int, client_factory: ClientFactory = default_client_factor
         except Exception as exc:  # noqa: BLE001
             logger.exception("Erro na busca da Shopee do bot %s", bot_id)
             result.errors.append(f"Shopee: erro inesperado {exc.__class__.__name__}")
+    if cfg.amazon_ready:
+        try:
+            with amazon_factory(cfg) as client:
+                found = collect_amazon(client, cfg, result)
+            result.collected += len(found)
+            products += found
+        except AmazonError as exc:
+            result.errors.append(str(exc))
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Erro na busca da Amazon do bot %s", bot_id)
+            result.errors.append(f"Amazon: erro inesperado {exc.__class__.__name__}")
     if products:
         try:
             # só manda para a fila automaticamente se o bot estiver ligado

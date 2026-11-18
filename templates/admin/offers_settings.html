@@ -54,6 +54,34 @@
     {% endif %}
     <p class="hint mt-2">{{ icon('check') }} Na Shopee o link de afiliado vem <b>pronto da API</b>, já com a sua comissão — não precisa colar nada.</p>
   </section>
+
+  {# ---------------- Amazon #}
+  {%- set amz_ok = values.amazon_credential_id and amazon_mask and values.amazon_partner_tag -%}
+  <section class="card">
+    <div class="card-header"><div class="card-icon">{{ icon('package') }}</div>
+      <div><h2>Amazon <span class="badge {{ 'badge-ok' if amz_ok else 'badge-muted' }}"><span class="dot"></span>{{ 'configurado' if amz_ok else 'não configurado' }}</span></h2>
+        <p>Em <a href="https://associados.amazon.com.br" target="_blank" rel="noopener">associados.amazon.com.br</a> → <b>Ferramentas → Creators API</b> → <b>Criar credencial</b>, copie o <b>Credential ID</b>, o <b>Credential Secret</b> e a <b>versão</b>. O Partner Tag é o seu ID de associado (termina em <code>-20</code>).</p></div></div>
+    {% if admin.is_superuser %}
+    <form method="post" action="/admin/offers/settings" class="form">{{ csrf() }}
+      <input type="hidden" name="store" value="amazon">
+      <div class="grid2">
+        <label>Credential ID<input name="amazon_credential_id" value="{{ values.amazon_credential_id }}" maxlength="128" autocomplete="off" placeholder="amzn1.application-oa2-client..."></label>
+        <label>Credential Secret
+          <input name="amazon_secret" type="password" maxlength="256" autocomplete="new-password"
+                 placeholder="{{ 'Salvo (' ~ amazon_mask ~ ') — deixe vazio para manter' if amazon_mask else 'Cole o Credential Secret' }}"></label>
+        <label>Partner Tag <small>seu ID de associado</small><input name="amazon_partner_tag" value="{{ values.amazon_partner_tag }}" maxlength="64" autocomplete="off" placeholder="meusite-20"></label>
+        <label>Versão da credencial
+          <select name="amazon_version">{% for key, label in amazon_versions.items() %}<option value="{{ key }}" {{ 'selected' if (values.amazon_version or '3.1') == key }}>{{ label }}</option>{% endfor %}</select></label>
+      </div>
+      <div class="row-form">
+        <button class="btn">{{ icon('save') }}Salvar</button>
+        <button class="btn btn-secondary" formaction="/admin/offers/settings/test" data-loading="Testando...">{{ icon('plug') }}Testar</button>
+      </div>
+    </form>
+    {% endif %}
+    <p class="hint mt-2">{{ icon('check') }} O link de afiliado vem <b>pronto da API</b>, já com o seu Partner Tag.
+      {{ icon('alert') }} A Amazon só libera a Creators API para associados com <b>vendas qualificadas recentes</b> — se o teste disser “acesso negado”, é isso.</p>
+  </section>
   <p class="hint">{{ icon('lock') }} As chaves secretas ficam criptografadas e nunca são exibidas de novo.</p>
 </div>
 

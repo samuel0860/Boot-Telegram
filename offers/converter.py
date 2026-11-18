@@ -21,9 +21,16 @@ import httpx
 from core.audit import log_event, utcnow
 from database import session_scope
 from models import OfferBot, OfferStatus
+from offers import amazon, collector, shopee, whatsapp
 from offers import bots as bot_service
-from offers import collector, shopee, whatsapp
-from offers.collector import ClientFactory, ShopeeFactory, default_client_factory, default_shopee_factory
+from offers.collector import (
+    AmazonFactory,
+    ClientFactory,
+    ShopeeFactory,
+    default_amazon_factory,
+    default_client_factory,
+    default_shopee_factory,
+)
 from offers.mercadolivre import MLError
 from offers.posting import telegram_caption
 
@@ -33,6 +40,8 @@ ITEM_RE = re.compile(r"(MLB)-?(\d{6,})", re.I)
 ML_HOSTS = ("mercadolivre.com.br", "mercadolibre.com", "mercadolivre.com", "meli.la")
 SHOPEE_HOSTS = ("shopee.com.br", "shp.ee", "shope.ee")
 SHOPEE_SHORT_HOSTS = ("s.shopee.com.br", "shp.ee", "shope.ee")   # links curtos = afiliado de quem gerou
+AMAZON_HOSTS = ("amazon.com.br", "amzn.to", "a.co", "amzn.com")
+AMAZON_SHORT_HOSTS = ("amzn.to", "a.co")
 
 
 COUPON_RE = re.compile(r"^\s*(?:⚠️\s*)?cupo[mn]\s*[:=-]\s*(.+?)\s*$", re.I | re.M)
@@ -56,17 +65,19 @@ def _host_in(host: str, hosts: tuple[str, ...]) -> bool:
 
 
 def store_of(url: str) -> str | None:
-    """'mercadolivre', 'shopee' ou None."""
+    """'mercadolivre', 'shopee', 'amazon' ou None."""
     host = urlsplit(url).hostname or ""
     if _host_in(host, ML_HOSTS):
         return "mercadolivre"
     if _host_in(host, SHOPEE_HOSTS):
         return "shopee"
+    if _host_in(host, AMAZON_HOSTS):
+        return "amazon"
     return None
 
 
 def find_link(text: str) -> str | None:
-    """Primeiro link do Mercado Livre ou da Shopee na mensagem."""
+    """Primeiro link do Mercado Livre, da Shopee ou da Amazon na mensagem."""
     for url in URL_RE.findall(text or ""):
         if store_of(url):
             return url.rstrip(").,;")
@@ -132,6 +143,15 @@ def resolve_shopee(url: str, *, transport: httpx.BaseTransport | None = None, ma
                        "ou o seu link curto (s.shopee.com.br/...).")
 
 
+def resolve_amazon(url: str, *, transport: httpx.BaseTransport | None = None, max_hops: int = 6) -> str:
+    """Amazon: ASIN do produto (segue amzn.to / a.co)."""
+    found = _follow(url, amazon.parse_asin, transport, max_hops)
+    if found:
+        return found
+    raise ConvertError("Não identifiquei o produto nesse link da Amazon. Envie o link da página do produto "
+                       "(amazon.com.br/.../dp/...) ou um link amzn.to.")
+
+
 @dataclass(frozen=True)
 class Preview:
     offer_id: int
@@ -146,11 +166,12 @@ class Preview:
 
 def import_link(bot_id: int, text: str, *, client_factory: ClientFactory = default_client_factory,
                 shopee_factory: ShopeeFactory = default_shopee_factory,
+                amazon_factory: AmazonFactory = default_amazon_factory,
                 transport: httpx.BaseTransport | None = None, admin_telegram_id: int | None = None) -> Preview:
-    """Lê o produto do link (Mercado Livre ou Shopee) e prepara o post NESTE bot (ainda não publica)."""
+    """Lê o produto do link (Mercado Livre, Shopee ou Amazon) e prepara o post NESTE bot (ainda não publica)."""
     url = find_link(text)
     if not url:
-        raise ConvertError("Envie um link do Mercado Livre (meli.la ou da página do produto) ou da Shopee.")
+        raise ConvertError("Envie um link do Mercado Livre (meli.la ou da página do produto), da Shopee ou da Amazon.")
 
     with session_scope() as session:
         bot = session.get(OfferBot, bot_id)
@@ -159,7 +180,23 @@ def import_link(bot_id: int, text: str, *, client_factory: ClientFactory = defau
         cfg = bot_service.config_for(session, bot)
 
     affiliate = None
-    if store_of(url) == "shopee":
+    store = store_of(url)
+    if store == "amazon":
+        if not cfg.amazon_credentials_ok:
+            raise ConvertError("Configure o Credential ID, o Secret e o Partner Tag da Amazon no painel → "
+                               "Ofertas → Lojas e APIs.")
+        asin = resolve_amazon(url, transport=transport)
+        try:
+            with amazon_factory(cfg) as client:
+                product = client.item(asin, source="conversor")
+        except amazon.AmazonError as exc:
+            raise ConvertError(str(exc)) from exc
+        if product is None:
+            raise ConvertError("A Amazon não devolveu esse produto (pode estar sem estoque ou sem oferta ativa).")
+        host = urlsplit(url).hostname or ""
+        # link curto que você mesmo gerou (SiteStripe) já leva a sua tag; senão usa o da API, com a sua tag
+        affiliate = url if _host_in(host, AMAZON_SHORT_HOSTS) else product.affiliate_url
+    elif store == "shopee":
         if not cfg.shopee_credentials_ok:
             raise ConvertError("Configure o AppID e a Senha da Shopee no painel → Ofertas → Lojas e APIs.")
         shop_id, item_id = resolve_shopee(url, transport=transport)
