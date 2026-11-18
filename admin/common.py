@@ -43,11 +43,40 @@ templates.env.globals["csrf_token"] = get_csrf_token
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
+def nav_context() -> dict[str, Any]:
+    """Dados do menu lateral: identidade do bot de vendas e a lista dos bots de promoção."""
+    from core import alert_service, settings_service
+    from database import session_scope
+    from models import OfferBot
+
+    try:
+        with session_scope() as session:
+            values = settings_service.get_all(session)
+            bots = [
+                {"id": b.id, "name": b.name, "on": b.is_active, "username": b.telegram_username}
+                for b in session.scalars(select(OfferBot).order_by(OfferBot.name, OfferBot.id))
+            ]
+        return {
+            "nav_sales": {
+                "username": settings.telegram_bot_username,
+                "online": alert_service.bot_online(values),
+            },
+            "nav_offers": {
+                "online": alert_service.bot_online(values, key=alert_service.OFFERS_HEARTBEAT),
+                "bots": bots,
+            },
+        }
+    except Exception:  # noqa: BLE001 - o menu nunca pode derrubar a página
+        return {"nav_sales": {"username": settings.telegram_bot_username, "online": False},
+                "nav_offers": {"online": False, "bots": []}}
+
+
 def render(request: Request, template: str, admin: AdminUser | None, **ctx: Any) -> HTMLResponse:
     flashes = request.session.pop("flash", [])
-    return templates.TemplateResponse(
-        request, template, {"admin": admin, "flashes": flashes, "now": utcnow(), **ctx}
-    )
+    base = {"admin": admin, "flashes": flashes, "now": utcnow()}
+    if admin is not None:
+        base.update(nav_context())
+    return templates.TemplateResponse(request, template, {**base, **ctx})
 
 
 def flash(request: Request, message: str, kind: str = "ok") -> None:

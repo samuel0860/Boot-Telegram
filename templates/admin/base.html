@@ -35,26 +35,52 @@
     <nav class="nav" aria-label="Menu principal">
       {{ navlink('/admin/', 'dashboard', 'Dashboard') }}
 
-      {% call navgroup('vendas', 'cart', 'Vendas', ['/admin/orders', '/admin/payments', '/admin/subscriptions', '/admin/users', '/admin/funnel', '/admin/coupons']) %}
-        {{ navlink('/admin/orders', 'inbox', 'Pedidos', '/admin/orders') }}
-        {{ navlink('/admin/payments', 'card', 'Transações', '/admin/payments') }}
-        {{ navlink('/admin/subscriptions', 'repeat', 'Assinaturas', '/admin/subscriptions') }}
-        {{ navlink('/admin/users', 'users', 'Usuários', '/admin/users') }}
-        {{ navlink('/admin/funnel', 'trending', 'Funil por origem', '/admin/funnel') }}
-        {{ navlink('/admin/coupons', 'percent', 'Cupons', '/admin/coupons') }}
-      {% endcall %}
+      {#- ================= MÓDULO 1: BOT DE VENDAS ================= -#}
+      <div class="nav-module mod-sales">
+        <div class="nav-module-head">
+          <span class="nav-module-ic">{{ icon('cart') }}</span>
+          <span class="nav-module-title"><b>Bot de vendas</b>
+            <small>{% if nav_sales and nav_sales.username %}@{{ nav_sales.username }}{% else %}produtos próprios{% endif %}</small></span>
+          <span class="live {{ 'on' if nav_sales and nav_sales.online }}" title="{{ 'Bot de vendas online' if nav_sales and nav_sales.online else 'Bot de vendas sem sinal' }}"></span>
+        </div>
+        {% call navgroup('vendas', 'dollar', 'Vendas', ['/admin/orders', '/admin/payments', '/admin/subscriptions', '/admin/users', '/admin/funnel', '/admin/coupons']) %}
+          {{ navlink('/admin/orders', 'inbox', 'Pedidos', '/admin/orders') }}
+          {{ navlink('/admin/payments', 'card', 'Transações', '/admin/payments') }}
+          {{ navlink('/admin/subscriptions', 'repeat', 'Assinaturas', '/admin/subscriptions') }}
+          {{ navlink('/admin/users', 'users', 'Clientes', '/admin/users') }}
+          {{ navlink('/admin/funnel', 'trending', 'Funil por origem', '/admin/funnel') }}
+          {{ navlink('/admin/coupons', 'percent', 'Cupons', '/admin/coupons') }}
+        {% endcall %}
+        {% call navgroup('catalogo', 'package', 'Catálogo', ['/admin/plans', '/admin/products', '/admin/categories']) %}
+          {{ navlink('/admin/plans', 'package', 'Planos', '/admin/plans') }}
+          {{ navlink('/admin/products', 'file', 'Conteúdos', '/admin/products') }}
+          {{ navlink('/admin/categories', 'folder', 'Categorias', '/admin/categories') }}
+        {% endcall %}
+      </div>
 
-      {% call navgroup('catalogo', 'package', 'Catálogo', ['/admin/plans', '/admin/products', '/admin/categories']) %}
-        {{ navlink('/admin/plans', 'package', 'Planos', '/admin/plans') }}
-        {{ navlink('/admin/products', 'file', 'Conteúdos', '/admin/products') }}
-        {{ navlink('/admin/categories', 'folder', 'Categorias', '/admin/categories') }}
-      {% endcall %}
-
-      {% call navgroup('ofertas', 'megaphone', 'Ofertas · afiliados', ['/admin/offers']) %}
-        {{ navlink('/admin/offers/bots', 'megaphone', 'Bots de ofertas', '/admin/offers/bots') }}
-        {{ navlink('/admin/offers', 'tag', 'Ofertas') }}
+      {#- ================= MÓDULO 2: PROMOÇÕES (AFILIADOS) ================= -#}
+      {%- set obots = nav_offers.bots if nav_offers else [] -%}
+      <div class="nav-module mod-offers">
+        <div class="nav-module-head">
+          <span class="nav-module-ic">{{ icon('megaphone') }}</span>
+          <span class="nav-module-title"><b>Grupos de promoção</b>
+            <small>{{ obots|length }} bot{{ 's' if obots|length != 1 }} · afiliados</small></span>
+          <span class="live {{ 'on' if nav_offers and nav_offers.online }}" title="{{ 'Módulo de promoções online' if nav_offers and nav_offers.online else 'Módulo de promoções sem sinal' }}"></span>
+        </div>
+        {% call navgroup('promo-bots', 'zap', 'Bots de promoção', ['/admin/offers/bots']) %}
+          {%- set p = request.url.path -%}
+          {% for b in obots %}
+            {%- set href = '/admin/offers/bots/' ~ b.id -%}
+            <a href="{{ href }}" class="nav-link nav-bot {{ 'active' if p == href or p.startswith(href ~ '/') }}" title="{{ b.name }}{{ ' · @' ~ b.username if b.username }}">
+              <span class="bot-avatar">{{ b.name[:1]|upper }}<i class="{{ 'on' if b.on }}"></i></span>
+              <span class="nav-bot-text"><span>{{ b.name }}</span><small>{{ '@' ~ b.username if b.username else 'sem token' }}</small></span>
+            </a>
+          {% endfor %}
+          <a href="/admin/offers/bots" class="nav-link nav-add {{ 'active' if p == '/admin/offers/bots' }}">{{ icon('plus') }}<span>{{ 'Gerenciar bots' if obots else 'Criar primeiro bot' }}</span></a>
+        {% endcall %}
+        {{ navlink('/admin/offers', 'tag', 'Ofertas encontradas') }}
         {{ navlink('/admin/offers/settings', 'key', 'Lojas e APIs', '/admin/offers/settings') }}
-      {% endcall %}
+      </div>
 
       {% call navgroup('sistema', 'settings', 'Sistema', ['/admin/logs', '/admin/webhooks', '/admin/admins', '/admin/account']) %}
         {{ navlink('/admin/logs', 'history', 'Histórico', '/admin/logs') }}
@@ -79,6 +105,12 @@
   <div class="main">
     <header class="topbar">
       <button class="icon-btn menu-toggle" id="menu-toggle" aria-label="Abrir menu">{{ icon('menu') }}</button>
+      {%- set tp = request.url.path -%}
+      {%- if tp.startswith('/admin/offers') -%}
+        <span class="module-pill mod-offers">{{ icon('megaphone') }}Promoções</span>
+      {%- elif tp.startswith(('/admin/orders', '/admin/payments', '/admin/subscriptions', '/admin/users', '/admin/funnel', '/admin/coupons', '/admin/plans', '/admin/products', '/admin/categories')) -%}
+        <span class="module-pill mod-sales">{{ icon('cart') }}Bot de vendas</span>
+      {%- endif %}
       <span class="topbar-title">{{ self.title() }}</span>
       <a class="topbar-link" href="/" target="_blank" rel="noopener">{{ icon('external') }}<span>Ver página inicial</span></a>
     </header>

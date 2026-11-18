@@ -36,6 +36,7 @@
   var groups = document.querySelectorAll(".nav-group[data-group]");
   Array.prototype.forEach.call(groups, function (g) {
     if (saved.indexOf(g.getAttribute("data-group")) !== -1) g.open = true;
+    g.querySelector("summary").addEventListener("click", function () { g.classList.add("anim"); });
     g.addEventListener("toggle", function () {
       var open = [];
       Array.prototype.forEach.call(groups, function (x) { if (x.open) open.push(x.getAttribute("data-group")); });
