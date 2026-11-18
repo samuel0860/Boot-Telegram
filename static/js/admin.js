@@ -29,3 +29,9 @@
   if (toggle) toggle.addEventListener("click", function () { setMenu(!sidebar.classList.contains("open")); });
   if (backdrop) backdrop.addEventListener("click", function () { setMenu(false); });
 })();
+
+// <select class="auto-submit">: troca a página ao escolher (ex.: escolher o bot na tela Ofertas).
+document.addEventListener("change", function (e) {
+  var el = e.target;
+  if (el && el.classList && el.classList.contains("auto-submit") && el.form) el.form.submit();
+});

@@ -11,12 +11,12 @@ Manual de uso do dia a dia, em linguagem simples. A parte técnica (instalação
 2. [Como acessar](#2-como-acessar)
 3. [Primeiros passos (checklist)](#3-primeiros-passos-checklist)
 4. [O painel, tela por tela](#4-o-painel-tela-por-tela)
-5. [Bot de ofertas: Mercado Livre → Telegram](#5-bot-de-ofertas-mercado-livre--telegram)
-6. [Ofertas no WhatsApp](#6-ofertas-no-whatsapp)
+5. [Bots de ofertas (Mercado Livre e Shopee → Telegram)](#5-bots-de-ofertas-mercado-livre-e-shopee--telegram)
+6. [Ofertas no WhatsApp (um número por bot)](#6-ofertas-no-whatsapp-um-número-por-bot)
 7. [Postar uma oferta pelo celular (modo conversor)](#7-postar-uma-oferta-pelo-celular-modo-conversor)
-8. [Vendas pelo bot (funil + PIX)](#8-vendas-pelo-bot-funil--pix)
+8. [Vendas pelo bot próprio (funil + PIX)](#8-vendas-pelo-bot-próprio-funil--pix)
 9. [Alertas e resumo diário](#9-alertas-e-resumo-diário)
-10. [Comandos do bot](#10-comandos-do-bot)
+10. [Comandos](#10-comandos)
 11. [Backup](#11-backup)
 12. [Problemas comuns](#12-problemas-comuns)
 13. [Para quem vai cuidar do servidor](#13-para-quem-vai-cuidar-do-servidor)
@@ -25,15 +25,16 @@ Manual de uso do dia a dia, em linguagem simples. A parte técnica (instalação
 
 ## 1. O que o sistema faz
 
-| Parte | O que faz |
-|---|---|
-| **Página inicial** | Página "Verificação de acesso" para quem vem do TikTok. Leva a pessoa ao bot do Telegram. |
-| **Bot do Telegram** (@lgr_ebac_bot) | Atende quem manda `/start`: mostra planos, gera PIX, libera o conteúdo depois do pagamento e controla a validade das assinaturas. |
-| **Bot de ofertas** | Busca promoções no Mercado Livre e publica sozinho no seu **canal do Telegram**. |
-| **WhatsApp** | Envia as mesmas ofertas para os seus **grupos do WhatsApp**, num ritmo seguro. |
-| **Painel** | Onde você configura e acompanha tudo. |
+O sistema tem **dois módulos separados**, cada um com seus bots e suas configurações:
 
-Tudo roda junto em containers Docker: `postgres` (banco), `backend` (painel e página), `telegram_bot`, `whatsapp` e `backup`.
+| Módulo | O que faz |
+|---|---|
+| **Vendas** (bot próprio, @lgr_ebac_bot) | Vende os **seus** produtos/serviços: mostra os planos, gera o PIX, libera o conteúdo depois do pagamento e controla a validade das assinaturas. O dinheiro cai direto na **sua conta** do gateway (hoje Mercado Pago). |
+| **Ofertas** (afiliados) | **Vários bots de ofertas**, cada um com o **próprio bot do Telegram** e o **próprio número de WhatsApp**. Cada um busca promoções no **Mercado Livre** e/ou na **Shopee** com os seus filtros e publica nos **seus** canais e grupos. |
+
+Também fazem parte: a **página inicial** (link da bio do TikTok, que leva ao bot de vendas) e o **painel**, onde você configura e acompanha os dois módulos.
+
+Tudo roda em containers Docker: `postgres` (banco), `backend` (painel e página), `telegram_bot` (vendas), `offers_bot` (ofertas), `whatsapp` e `backup`.
 
 ## 2. Como acessar
 
@@ -45,98 +46,126 @@ Tudo roda junto em containers Docker: `postgres` (banco), `backend` (painel e p�
 
 Usuário e senha do painel: veja o `ACESSOS.md`. Para trocar a senha: **Minha conta → Trocar senha**.
 
+**Recomendado:** ative a **verificação em duas etapas** em *Minha conta*. Instale o Google Authenticator (ou Microsoft Authenticator/Authy) no celular, escaneie o QR Code e digite o código. Depois disso o login pede senha **e** o código do app. Perdeu o celular? No servidor: `make reset-2fa u=admin`.
+
 > Com o servidor definitivo e um domínio, os endereços mudam para `https://seudominio.com.br/admin/`.
 
 ## 3. Primeiros passos (checklist)
 
-O **Dashboard** mostra o checklist "Primeiros passos" com o que ainda falta:
+O **Dashboard** mostra o checklist "Primeiros passos" com o que ainda falta (cada item diz se é de vendas ou de ofertas):
 
-1. ✅ **Bot do Telegram no ar**: já está.
-2. **Vincular o seu Telegram**: Minha conta → *Gerar código de vínculo* → mande `/vincular CÓDIGO` ao bot. Libera alertas, resumo diário e o modo conversor.
-3. ✅ **Planos e conteúdos**: já existem 3 planos de exemplo. Ajuste preços e conteúdos reais.
-4. **Pagamentos PIX**: coloque o `MP_ACCESS_TOKEN` no `.env` (seção 8).
-5. **Bot de ofertas** *(opcional)*: App ID + Secret Key do Mercado Livre e o canal (seção 5).
-6. **WhatsApp** *(opcional)*: conectar o número e escolher os grupos (seção 6).
+1. **Vincular o seu Telegram**: Minha conta → *Gerar código de vínculo* → mande `/vincular CÓDIGO` ao bot. Libera alertas e resumo diário.
+2. **Vendas — bot no ar** e **planos e conteúdos**: já existem 3 planos de exemplo. Ajuste preços e conteúdos reais.
+3. **Vendas — pagamentos**: coloque as credenciais do gateway no `.env` (seção 8).
+4. **Ofertas — conta do Mercado Livre** *(opcional)*: App ID + Secret Key (seção 5).
+5. **Ofertas — primeiro bot** *(opcional)*: crie o bot, cadastre o token e/ou o WhatsApp e os destinos (seção 5).
 
 ## 4. O painel, tela por tela
 
 **Visão geral**
 - **Dashboard**: status dos serviços (bolinha verde = funcionando), checklist e números de vendas e ofertas.
 
-**Vendas**
+**Vendas · bot próprio**
 - **Pedidos**: cada PIX gerado no bot e se foi pago e entregue.
-- **Transações**: os pagamentos recebidos do Mercado Pago.
+- **Transações**: os pagamentos recebidos pelo gateway (hoje Mercado Pago).
 - **Assinaturas**: quem tem acesso ativo, vencido ou encerrado. Dá para **encerrar** um acesso (o bot remove a pessoa do grupo).
-- **Usuários**: todos que deram `/start`. Dá para **bloquear** alguém.
+- **Usuários**: todos que deram `/start`. Dá para **bloquear** alguém e, se o cliente pedir exclusão dos dados (LGPD), **anonimizar**.
+- **Funil por origem**: de onde vem quem abre o bot (TikTok, Instagram...), quantos geram PIX e quantos compram.
+- **Cupons**: crie códigos de desconto para os planos do bot (ex.: `TIKTOK10` = 10% off).
 
-**Catálogo**
 - **Planos**: o que aparece para compra no bot (preço, pack ou assinatura, duração, o que libera). Planos não são apagados: use **Ocultar**.
 - **Conteúdos**: o que é entregue após o pagamento: grupo/canal do Telegram, link, arquivo, foto, vídeo ou texto.
 - **Categorias**: organizam os conteúdos na lista "Ver conteúdo disponível" do bot.
 
-**Promoções**
-- **Bot de ofertas**: credenciais do Mercado Livre, canal, filtros e categorias.
-- **Ofertas**: tudo o que foi encontrado. Dá para colar o seu link de afiliado, publicar, mandar no WhatsApp ou descartar.
-- **WhatsApp**: passo a passo para conectar o número, escolher grupos e ativar.
+**Ofertas · afiliados**
+- **Bots de ofertas**: a lista dos seus bots de ofertas. Cada um tem as abas *Geral*, *Telegram* (token e canais), *WhatsApp* (número e grupos), *Busca e filtros* e *Modelo do post*.
+- **Ofertas**: o que cada bot encontrou (escolha o bot no topo). Dá para definir a **chamada**, o **cupom** e o link de afiliado, ver a **prévia do post**, publicar ou descartar.
+- **Mercado Livre**: a conta da API (App ID e Secret Key), usada por todos os bots de ofertas.
 
 **Sistema**
 - **Histórico**: registro de tudo (liberações, logins, alterações). Útil para saber "quem mudou o quê".
 - **Webhooks**: avisos de pagamento recebidos do Mercado Pago.
 - **Administradores**: criar outros acessos. *Operador* só consulta e bloqueia; *Superusuário* altera tudo.
 
-## 5. Bot de ofertas: Mercado Livre → Telegram
+## 5. Bots de ofertas (Mercado Livre e Shopee → Telegram)
 
-**Configurar (uma vez):**
-1. Em https://developers.mercadolivre.com.br/devcenter, clique em **Criar aplicação**. Para a URL de redirect, qualquer endereço https serve (ex.: `https://seudominio.com.br`).
-2. Copie o **App ID** e a **Secret Key**.
-3. Crie um **canal** no Telegram e adicione o **@lgr_ebac_bot como administrador** com permissão de **Publicar mensagens**.
-4. No painel → **Bot de ofertas**:
-   - **Passo 1:** App ID e Secret Key.
-   - **Passo 2:** o canal (`@nomedocanal`). Se o canal for privado, encaminhe um post dele para o bot e ele responde com o ID.
-   - **Passos 3 e 4:** desconto mínimo, faixa de preço, categorias, palavras-chave e horário.
-5. Clique em **Testar conexão**. Todas as etapas devem ficar ✅.
-6. Clique em **Buscar ofertas agora** e confira em **Ofertas**.
-7. Clique em **Ligar bot**.
+Você pode ter **quantos bots de ofertas quiser**. Cada um tem o próprio bot do Telegram, o próprio número de WhatsApp, os próprios canais/grupos e as próprias configurações. Exemplo: *Ofertas Tech* nos grupos de tecnologia e *Ofertas Casa* nos de casa.
 
-**Como funciona:** a cada X minutos (padrão 45), dentro do horário ativo, o bot pega os mais vendidos das categorias escolhidas, calcula o desconto, aplica os filtros e publica as melhores. Ele não repete o mesmo produto por 7 dias.
+**Uma vez só — contas das lojas** (Painel → **Lojas e APIs**):
+- **Mercado Livre:** em https://developers.mercadolivre.com.br/devcenter, clique em **Criar aplicação** (para a URL de redirect, qualquer endereço https serve). Cole o **App ID** e a **Secret Key** → **Salvar** → **Testar**.
+- **Shopee:** em https://affiliate.shopee.com.br → **Open API**, copie o **AppID** e a **Senha** → cole no painel → **Salvar** → **Testar**. Na Shopee o **link de afiliado vem pronto** da API, já com a sua comissão.
+
+**Para cada bot de ofertas:**
+1. Painel → **Bots de ofertas** → digite o nome → **Criar bot**.
+2. Aba **Telegram**:
+   - No Telegram, abra o **@BotFather**, mande `/newbot` e crie um bot **só para ofertas** (não use o @lgr_ebac_bot, que é o de vendas).
+   - Cole o token no painel → **Salvar token**.
+   - Adicione esse bot como **administrador** dos seus canais/grupos de ofertas (com permissão de publicar). Eles aparecem em **Encontrados pelo bot** → **Adicionar**. Também dá para digitar `@nomedocanal`.
+3. Aba **Busca e filtros**: marque as **lojas** (Mercado Livre e/ou Shopee), desconto mínimo, faixa de preço, palavras-chave, horário e modo (automático ou manual).
+4. Aba **Modelo do post**: o texto das publicações (veja abaixo).
+5. Na lateral: **Testar lojas** → **Buscar ofertas agora** → confira em **Ofertas** → **Ligar bot**.
+6. Abra o bot no Telegram e mande `/start` para receber os alertas dele.
+
+**Como funciona:** a cada X minutos (padrão 45), dentro do horário do bot, ele pega os mais vendidos das categorias escolhidas, calcula o desconto, aplica os filtros e publica as melhores em **todos os canais/grupos** daquele bot. Não repete o mesmo produto por 7 dias.
 
 - **Modo automático:** publica sozinho.
 - **Modo manual:** as ofertas ficam em **Ofertas → Aguardando** para você aprovar.
 
-**Link de afiliado:** o Mercado Livre **não tem API** para gerar link de afiliado. Para ganhar comissão:
+**Modelo do post:** cada bot tem o seu (aba *Modelo do post*), usado no Telegram e no WhatsApp. O padrão é:
+
+```
+🆘 *PRECIN NA 43" DA PHILCO*
+
+Smart TV Philco 43" Roku Tv Hdr10
+
+Por R$1.095 pix 👑
+⚠️ cupom: *DIADATECH*
+
+Link: https://meli.la/33hYTSb
+```
+
+Dá para mudar o texto usando os marcadores (`{chamada}`, `{titulo}`, `{preco}`, `{de}`, `{desconto}`, `{cupom}`, `{link}`, `{frete}`, `{rodape}`) e `*negrito*`. A prévia aparece ao lado. Sem cupom, a linha do cupom some sozinha.
+
+**Link de afiliado:** na **Shopee** é automático. O **Mercado Livre** não tem API para gerar link de afiliado; para ganhar comissão:
 - gere o link no **Linkbuilder** do Programa de Afiliados e cole no campo da oferta, **ou**
 - use o **modo conversor** (seção 7), que é o jeito mais rápido.
 
-## 6. Ofertas no WhatsApp
+## 6. Ofertas no WhatsApp (um número por bot)
 
-Painel → **WhatsApp**, em 3 passos:
-1. **Conectar o número**: clique em *Gerar QR Code*. No celular do **chip dedicado**: WhatsApp → ⋮ → *Aparelhos conectados* → *Conectar um aparelho*.
-2. **Escolher os grupos** que recebem as ofertas.
-3. **Ativar envios automáticos**. Antes, mande uma *mensagem de teste*.
+Na página do bot de ofertas → aba **WhatsApp**, em 3 passos:
+1. **Conectar o número**: *Gerar QR Code*. No celular do **chip deste bot**: WhatsApp → ⋮ → *Aparelhos conectados* → *Conectar um aparelho*.
+2. **Escolher os grupos** que recebem as ofertas **deste bot**.
+3. **Ativar envios**. Antes, mande uma *mensagem de teste*.
 
-**Ritmo de envio (anti-bloqueio):**
+Cada bot usa **o próprio chip**: se um número for bloqueado, os outros bots continuam funcionando.
+
+**Ritmo de envio (anti-bloqueio), por número:**
 - **Primeiros 7 dias (aquecimento):** até **5 ofertas por dia**, espalhadas.
 - **Depois:** **5 ofertas a cada 4 horas**, no máximo 20 por dia.
-- **Horário:** só dentro do horário ativo (padrão 08:00–23:00).
+- **Horário:** só dentro do horário do bot (padrão 08:00–23:00).
 - **Prioridade:** as ofertas com maior desconto saem primeiro.
 
 Dá para mudar em *Ajustar ritmo (avançado)*. Trocou de chip? Use *Recomeçar aquecimento*.
 
-> ⚠️ A conexão funciona como o WhatsApp Web (Evolution API), não é a API oficial da Meta. Use **um chip só para isso** e envie só para **grupos seus**. O risco de bloqueio é baixo com esse ritmo, mas não é zero.
+> ⚠️ A conexão funciona como o WhatsApp Web (Evolution API), não é a API oficial da Meta. Use **um chip só para cada bot** e envie só para **grupos seus**. O risco de bloqueio é baixo com esse ritmo, mas não é zero.
 
 ## 7. Postar uma oferta pelo celular (modo conversor)
 
 Depois de vincular o seu Telegram (Minha conta):
-1. No app do Mercado Livre, gere o seu link de afiliado (`meli.la/...`) ou copie o link do produto.
-2. **Cole o link na conversa com o @lgr_ebac_bot.**
-3. O bot responde com a **prévia do post** (foto, preço de/por, desconto) e três botões:
-   - **Publicar (Telegram + WhatsApp)**
-   - **Só no Telegram**
+1. No app do Mercado Livre, gere o seu link de afiliado (`meli.la/...`), ou na Shopee copie o link do produto ou o seu link curto (`s.shopee.com.br/...`).
+2. **Cole o link na conversa com o bot de ofertas** que deve publicar (ex.: @OfertasTechBot). Se quiser, na mesma mensagem, escreva a chamada e o cupom em linhas separadas:
+   ```
+   https://meli.la/33hYTSb
+   chamada: PRECIN NA 43" DA PHILCO
+   cupom: DIADATECH
+   ```
+3. O bot responde com a **prévia do post** e os botões:
+   - **Publicar (Telegram + WhatsApp)** · **Só no Telegram** · **Só no WhatsApp**
    - **Descartar**
 
-O post sai com o **seu link de afiliado** no botão "Ver oferta". No WhatsApp, ele segue o ritmo de envio.
+O post sai nos canais/grupos **daquele bot**, com o **seu link de afiliado** no texto e no botão "Ver oferta". No WhatsApp, ele segue o ritmo de envio do número do bot.
 
-## 8. Vendas pelo bot (funil + PIX)
+## 8. Vendas pelo bot próprio (funil + PIX)
 
 **Configurar o PIX:**
 1. Em https://www.mercadopago.com.br/developers/panel/app, crie uma aplicação e copie o **Access Token**.
@@ -152,38 +181,53 @@ O post sai com o **seu link de afiliado** no botão "Ver oferta". No WhatsApp, e
 
 O acesso **nunca** é liberado só porque a pessoa clicou em "Já paguei". O sistema sempre consulta o pagamento real.
 
+**Recursos que ajudam a vender mais:**
+- **Cupons:** crie em *Cupons*. O cliente usa mandando `/cupom CODIGO`, digitando o código, ou pelo link `t.me/SeuBot?start=tiktok__CODIGO`.
+- **PIX expirou?** 10 minutos depois o bot manda uma mensagem com o botão **Gerar novo PIX** (uma vez só).
+- **Renovação em 1 toque:** o aviso de vencimento já tem o botão **Renovar agora**.
+- **Oferta após a compra:** depois de entregar, o bot oferece uma vez o próximo plano (ex.: quem comprou um pack recebe a oferta da assinatura).
+- **Saber o que vende:** use um link por vídeo/canal (`t.me/SeuBot?start=tiktok-v12`) e veja os números em *Funil por origem*.
+
 ## 9. Alertas e resumo diário
 
-Com o Telegram vinculado, o bot te avisa quando:
-- o WhatsApp desconectar;
-- a busca de ofertas falhar (ex.: credencial errada);
-- um pedido pago ficar sem entrega por mais de 10 minutos;
-- webhooks de pagamento falharem.
+Com o Telegram vinculado, cada módulo te avisa **pelo próprio bot**:
 
-O mesmo alerta não se repete por 6 horas. Todo dia (padrão: 21h) chega o **resumo**: novos usuários, vendas e ofertas publicadas. Para configurar: **Minha conta → Alertas e resumo diário**.
+- **Bot de vendas:** pedido pago sem entrega por mais de 10 minutos, webhooks de pagamento falhando, e o **resumo diário das vendas**.
+- **Cada bot de ofertas** (mande `/start` para ele uma vez): WhatsApp desconectado, falha na busca de ofertas, canais sem token, e o **resumo diário daquele bot**.
+- Qualquer **erro** no sistema (o aviso diz onde foi; o mesmo erro não se repete por 30 minutos).
 
-## 10. Comandos do bot
+O mesmo alerta não se repete por 6 horas. O resumo chega no horário configurado (padrão: 21h) em **Minha conta → Alertas e resumo diário**.
 
-**Para clientes:**
+## 10. Comandos
+
+**Bot de vendas — para clientes:**
 
 | Comando | O que faz |
 |---|---|
 | `/start` | Menu principal |
 | `/planos` | Lista de planos |
+| `/cupom CODIGO` | Aplica um cupom de desconto |
 | `/meusacessos` | Acessos ativos e reenvio do conteúdo |
 | `/suporte` | Contato do suporte |
 
-**Para você (Telegram vinculado):**
+**Bot de vendas — para você:**
 
 | Comando / ação | O que faz |
 |---|---|
-| `/status` | Saúde do sistema |
-| `/resumo` | Números de hoje |
-| colar link do Mercado Livre | Monta o post da oferta |
-| encaminhar post de um canal | Mostra o ID do canal |
+| `/status` | Situação das vendas |
+| `/resumo` | Vendas de hoje |
 | enviar arquivo, foto ou vídeo | Mostra o `file_id` para cadastrar como conteúdo |
 | `/chatid` (dentro de um grupo) | Mostra o ID do grupo |
 | `/id` | Mostra o seu ID do Telegram |
+
+**Bots de ofertas — para você:**
+
+| Comando / ação | O que faz |
+|---|---|
+| `/status` | Situação daquele bot (destinos, fila, última busca) |
+| colar link do Mercado Livre ou da Shopee | Monta o post da oferta (aceita `chamada:` e `cupom:` em linhas abaixo do link) |
+| encaminhar post de um canal | Mostra o ID do canal |
+| `/vincular CÓDIGO` | Vincula o seu Telegram ao painel (funciona em qualquer bot) |
 
 ## 11. Backup
 
@@ -198,11 +242,11 @@ O mesmo alerta não se repete por 6 horas. Todo dia (padrão: 21h) chega o **res
 | Problema | O que fazer |
 |---|---|
 | Painel não abre | `docker compose ps` (todos devem estar "Up"); `docker compose up -d` |
-| Bot não responde | Dashboard: "Bot do Telegram" deve estar verde. Ver logs: `docker compose logs --tail 50 telegram_bot` |
-| "Pagamentos indisponíveis" no bot | Falta `MP_ACCESS_TOKEN` no `.env` |
-| Bot de ofertas não posta | *Testar conexão* no painel; confira se o bot é admin do canal e se está dentro do horário ativo |
+| Bot de vendas não responde | Dashboard: "Bot de vendas" deve estar verde. Logs: `docker compose logs --tail 50 telegram_bot` |
+| "Pagamentos indisponíveis" no bot de vendas | Falta a credencial do gateway no `.env` (hoje `MP_ACCESS_TOKEN`) |
+| Bot de ofertas não posta | Dashboard: "Módulo de ofertas" verde? Na página do bot: está *ligado*, tem *token* e *destinos*, *Testar Mercado Livre* ok, dentro do horário? O bot é admin do canal? Logs: `make logs-offers` |
 | Ofertas sem comissão | Cole o link `meli.la` na oferta ou use o modo conversor |
-| WhatsApp desconectou | Painel → WhatsApp → *Gerar QR Code* e ler de novo |
+| WhatsApp desconectou | Painel → Bots de ofertas → o bot → aba *WhatsApp* → *Gerar QR Code* e ler de novo |
 | Esqueci a senha do painel | No servidor: `docker compose exec backend python manage.py set-password --username admin` |
 | Conta do painel bloqueada | Espere 15 minutos ou redefina a senha (comando acima) |
 
@@ -216,10 +260,10 @@ docker compose up -d --build
 
 # status e logs
 docker compose ps
-docker compose logs -f telegram_bot      # ou backend, whatsapp, backup, postgres
+docker compose logs -f telegram_bot      # vendas (ou: offers_bot, backend, whatsapp, backup, postgres)
 
 # reiniciar / parar (dados preservados)
-docker compose restart backend telegram_bot
+docker compose restart backend telegram_bot offers_bot
 docker compose down                      # NUNCA use "down -v": apaga o banco
 
 # criar admin / trocar senha / verificar configuração
@@ -227,13 +271,12 @@ docker compose exec backend python manage.py create-admin --username NOME --supe
 docker compose exec backend python manage.py set-password --username admin
 docker compose exec backend python manage.py check
 
-# testes automatizados
-docker compose run --rm -T -v "$PWD:/app" migrate sh -c \
-  "pip install -q --target /tmp/pt pytest && PYTHONPATH=/tmp/pt python -m pytest -q -p no:cacheprovider"
+# testes automatizados (usam um banco separado de teste)
+make test-docker
 ```
 
 **Para colocar na internet:**
 1. Aponte o domínio para o servidor e preencha `DOMAIN`, `PUBLIC_BASE_URL=https://...` e `APP_ENV=production` no `.env`.
 2. Suba com HTTPS automático: `docker compose --profile proxy up -d --build`.
 3. Libere só as portas 80 e 443 no firewall. Deixe `BACKEND_BIND_ADDRESS=127.0.0.1`: o proxy é que fica exposto.
-4. Para migrar de servidor, faça um backup, copie o projeto, o `.env` e o `.dump`, suba o novo servidor e use `./scripts/restore.sh`. O WhatsApp precisa ler o QR Code de novo.
+4. Para migrar de servidor, faça um backup, copie o projeto, o `.env` e o `.dump`, suba o novo servidor e use `./scripts/restore.sh`. O WhatsApp de cada bot de ofertas precisa ler o QR Code de novo.

@@ -1,0 +1,94 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import pagination, status as badge, csrf, page_header with context %}
+{% from "admin/_icons.html" import icon with context %}
+{% block title %}Ofertas{% endblock %}
+{% block content %}
+{% call page_header('Ofertas', 'O que cada bot encontrou no Mercado Livre e na Shopee. Defina chamada, cupom e link de afiliado e publique.') %}
+  <a class="btn btn-secondary" href="/admin/offers/bots/{{ current.id }}">{{ icon('sliders') }}Configurar este bot</a>
+{% endcall %}
+
+<form method="get" class="row-form mb-3">
+  <label class="label-like" for="bot-select">Bot</label>
+  <select id="bot-select" name="bot" class="auto-submit">
+    {% for b in bots %}<option value="{{ b.id }}" {{ 'selected' if b.id == current.id }}>{{ b.name }}{{ '' if b.is_active else ' (desligado)' }}</option>{% endfor %}
+  </select>
+  <input type="hidden" name="status" value="{{ status }}">
+  <button class="btn btn-sm btn-secondary">Trocar</button>
+</form>
+
+{% set labels = {'new': 'Aguardando', 'queued': 'Na fila', 'posted': 'Publicadas', 'discarded': 'Descartadas', 'failed': 'Falhas'} %}
+<div class="segmented">
+  {% for s in statuses %}<a href="?bot={{ current.id }}&status={{ s }}" class="{{ 'on' if status == s }}">{{ labels.get(s, s) }}<span class="count">{{ stats.get(s, 0) }}</span></a>{% endfor %}
+  <a href="?bot={{ current.id }}&status=all" class="{{ 'on' if status == 'all' }}">Todas</a>
+</div>
+
+{% if not has_tg and not wa_ready %}
+<div class="alert alert-warn">{{ icon('alert') }}<span>Este bot ainda não tem destinos ativos. <a href="/admin/offers/bots/{{ current.id }}?tab=telegram">Cadastre um canal do Telegram</a> ou <a href="/admin/offers/bots/{{ current.id }}?tab=whatsapp">conecte o WhatsApp</a>.</span></div>
+{% endif %}
+
+<div class="offers">
+{% for p in posts %}
+  {%- set o = p.offer -%}
+  {%- set base = '/admin/offers/bots/' ~ current.id ~ '/offers/' ~ o.id -%}
+  <article class="offer card {{ 'muted' if p.status.value == 'discarded' }}">
+    {% if o.image_url %}<img class="offer-img" src="{{ o.image_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">
+    {% else %}<div class="noimg">{{ icon('package') }}</div>{% endif %}
+    <div class="info">
+      <a class="offer-title" href="{{ o.product_url }}" target="_blank" rel="noopener noreferrer">{{ o.title }}</a>
+      <div class="price-row">
+        {% if o.original_price %}<span class="price-old">{{ o.original_price|brl }}</span>{% endif %}
+        <span class="price-new">{{ o.price|brl }}</span>
+        {% if o.discount_pct %}<span class="badge badge-discount">-{{ o.discount_pct }}%</span>{% endif %}
+        <span class="badge badge-store-{{ o.platform }}">{{ 'Shopee' if o.platform == 'shopee' else 'Mercado Livre' }}</span>
+        {{ badge(p.status.value) }}
+        {% set wa = {'pending': ('WhatsApp: na fila', 'warn'), 'sent': ('WhatsApp: enviada', 'ok'), 'failed': ('WhatsApp: falhou', 'danger'), 'skipped': ('WhatsApp: expirou', 'muted')} %}
+        {% if p.wa_status.value in wa %}<span class="badge badge-{{ wa[p.wa_status.value][1] }}"><span class="dot"></span>{{ wa[p.wa_status.value][0] }}</span>{% endif %}
+      </div>
+      <div class="offer-meta">
+        {% if o.free_shipping %}<span>{{ icon('truck') }}Frete grátis</span>{% endif %}
+        {% if o.source %}<span>{{ icon('search') }}{{ o.source.replace('mais-vendidos:', 'Mais vendidos · ').replace('busca:', 'Busca · ') }}</span>{% endif %}
+        <span>{{ icon('clock') }}Visto em {{ o.last_seen_at|dt }}</span>
+        {% if p.posted_at %}<span>{{ icon('send') }}Publicado em {{ p.posted_at|dt }}</span>{% endif %}
+      </div>
+      {% if p.error %}<div class="alert alert-error mb-0">{{ icon('alert') }}<span>{{ p.error }}</span></div>{% endif %}
+      {% if p.wa_error %}<div class="alert alert-warn mb-0">{{ icon('phone') }}<span>WhatsApp: {{ p.wa_error }}</span></div>{% endif %}
+      <details class="post-preview">
+        <summary>{{ icon('message') }}Prévia do post</summary>
+        <pre>{{ previews[p.id] }}</pre>
+      </details>
+      <form method="post" action="{{ base }}/queue" class="offer-form">{{ csrf() }}
+        <div class="offer-fields">
+          <input name="headline" value="{{ o.headline or '' }}" placeholder="Chamada: ex. PRECIN NA 43&quot; DA PHILCO (vazio = padrão)" maxlength="120">
+          <input name="coupon" value="{{ o.coupon or '' }}" placeholder="Cupom (opcional)" maxlength="40">
+          <input name="affiliate_url" value="{{ o.affiliate_url or '' }}" placeholder="Link de afiliado: https://meli.la/... (Shopee: já vem preenchido)" maxlength="500">
+        </div>
+        <div class="row-form">
+          <button class="btn btn-sm btn-secondary" formaction="{{ base }}/save">{{ icon('save') }}Salvar</button>
+          {% if has_tg and wa_ready %}
+            <button class="btn btn-sm" name="target" value="both">{{ icon('send') }}Publicar (Telegram + WhatsApp)</button>
+            <button class="btn btn-sm btn-secondary" name="target" value="telegram">Só Telegram</button>
+            <button class="btn btn-sm btn-secondary" name="target" value="whatsapp">Só WhatsApp</button>
+          {% elif has_tg %}
+            <button class="btn btn-sm" name="target" value="telegram">{{ icon('send') }}{{ 'Publicar novamente' if p.status.value == 'posted' else 'Publicar no Telegram' }}</button>
+          {% elif wa_ready %}
+            <button class="btn btn-sm" name="target" value="whatsapp">{{ icon('phone') }}Enviar no WhatsApp</button>
+          {% endif %}
+          {% if p.status.value in ('new', 'queued') %}
+            <button class="btn btn-sm btn-danger" formaction="{{ base }}/discard">{{ icon('trash') }}Descartar</button>
+          {% elif p.status.value in ('discarded', 'failed') %}
+            <button class="btn btn-sm btn-secondary" formaction="{{ base }}/restore">{{ icon('undo') }}Restaurar</button>
+          {% endif %}
+        </div>
+      </form>
+    </div>
+  </article>
+{% else %}
+  <div class="card empty">
+    <p><b>Nenhuma oferta nesta lista.</b></p>
+    <p class="hint mt-2">Na página do bot, clique em “Buscar ofertas agora” — ou cole um link do Mercado Livre/Shopee na conversa com o bot no Telegram.</p>
+  </div>
+{% endfor %}
+</div>
+{{ pagination(pager, '/admin/offers?bot=' ~ current.id ~ '&status=' ~ status) }}
+<p class="hint mt-3">{{ icon('info') }} Link de afiliado, chamada e cupom são da oferta (mesma conta de afiliado para todos os bots). A fila e o histórico de publicação são de cada bot.</p>
+{% endblock %}

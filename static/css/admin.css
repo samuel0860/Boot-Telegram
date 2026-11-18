@@ -530,3 +530,50 @@ progress::-moz-progress-bar { background: var(--ok); border-radius: 999px; }
 }
 
 .choice { position: relative; }
+
+/* Modelo do post (bot de promoções) */
+.template-editor { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: start; }
+.template-editor textarea { font-family: var(--mono); font-size: 13px; line-height: 1.5; min-height: 220px; }
+.label-like { display: block; font-size: 13px; color: var(--text-2); font-weight: 500; margin-bottom: 6px; }
+.wa-bubble { background: #1f2c33; border-radius: 10px 10px 10px 2px; padding: 10px 12px; border: 1px solid #2a3942; }
+.wa-bubble pre, .post-preview pre {
+  margin: 0; white-space: pre-wrap; word-break: break-word; font: 13.5px/1.45 var(--font); color: #e9edef;
+}
+.placeholders { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 16px; }
+.pill-static { font-size: 12px; color: var(--muted); background: var(--surface-2); border: 1px solid var(--border);
+  border-radius: 999px; padding: 3px 10px 3px 4px; }
+.pill-static code { margin-right: 4px; }
+.check-inline { display: flex !important; align-items: center; gap: 8px; font-size: 13px; color: var(--text-2); }
+.check-inline input { width: auto; }
+.post-preview summary { cursor: pointer; color: var(--text-2); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+.post-preview summary .icon { width: 14px; height: 14px; }
+.post-preview pre { margin-top: 8px; background: #1f2c33; border: 1px solid #2a3942; border-radius: 10px; padding: 10px 12px; }
+.offer-form { display: flex; flex-direction: column; gap: 8px; }
+.offer-fields { display: grid; grid-template-columns: 1.4fr .6fr 1.4fr; gap: 8px; }
+@media (max-width: 900px) {
+  .template-editor, .offer-fields { grid-template-columns: 1fr; }
+}
+
+/* Verificação em duas etapas */
+.qr-2fa { display: inline-block; background: #fff; padding: 8px; border-radius: 10px; margin: 10px 0 6px; line-height: 0; }
+.qr-2fa svg { width: 190px; height: 190px; }
+.otp-input { font-family: var(--mono); font-size: 20px; letter-spacing: .3em; text-align: center; max-width: 200px; }
+
+/* Funil e cupons */
+.row-total td { border-top: 2px solid var(--border-strong); background: var(--surface-2); }
+.code-box-url { font-size: 14px; letter-spacing: 0; word-break: break-all; max-width: 100%; }
+
+/* Bots de ofertas */
+.bot-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+.bot-card { margin: 0; color: var(--text); transition: border-color .15s ease, transform .15s ease; }
+.bot-card:hover { border-color: var(--border-strong); color: var(--text); transform: translateY(-1px); }
+.bot-card-head { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.bot-card-head > div { flex: 1; min-width: 0; }
+.bot-card-head b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bot-card-head small { color: var(--muted); font-size: 12.5px; }
+.bot-card .today-list .icon { width: 13px; height: 13px; vertical-align: -2px; }
+.danger-zone summary { cursor: pointer; }
+.module-tag { display: inline-block; font-size: 11px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase;
+  color: var(--muted); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; margin-left: 6px; vertical-align: 2px; }
+.badge-store-shopee { background: rgba(238, 77, 45, .14); color: #ff7a59; border: 1px solid rgba(238, 77, 45, .3); }
+.badge-store-mercadolivre { background: rgba(255, 230, 0, .1); color: #f5d90a; border: 1px solid rgba(255, 230, 0, .25); }

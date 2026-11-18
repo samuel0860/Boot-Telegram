@@ -7,6 +7,18 @@
     <span class="brand-mark">{{ icon('zap') }}</span>
     <span class="brand-text">Telegram Vendas<small>Painel administrativo</small></span>
   </div>
+  {% if step == '2fa' %}
+  <h1>Verificação em duas etapas</h1>
+  <p class="subtitle">Digite o código de 6 dígitos do seu aplicativo autenticador.</p>
+  {% if error %}<div class="alert alert-error">{{ icon('alert') }}<span>{{ error }}</span></div>{% endif %}
+  <form method="post" action="/admin/login/2fa" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
+    <label>Código <input name="code" required autocomplete="one-time-code" inputmode="numeric" pattern="[0-9 ]{6,7}"
+      maxlength="7" autofocus class="otp-input" placeholder="000000"></label>
+    <button class="btn btn-lg btn-block">{{ icon('lock') }}Confirmar</button>
+  </form>
+  <p class="hint mt-3"><a href="/admin/login">Voltar</a> · Perdeu o celular? Rode no servidor: <code>make reset-2fa u=usuario</code></p>
+  {% else %}
   <h1>Entrar</h1>
   <p class="subtitle">Acesse com seu usuário de administrador.</p>
   {% if error %}<div class="alert alert-error">{{ icon('alert') }}<span>{{ error }}</span></div>{% endif %}
@@ -16,5 +28,6 @@
     <label>Senha <input name="password" type="password" required autocomplete="current-password" maxlength="256"></label>
     <button class="btn btn-lg btn-block">{{ icon('lock') }}Entrar</button>
   </form>
+  {% endif %}
 </div>
 {% endblock %}

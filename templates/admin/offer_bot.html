@@ -1,0 +1,364 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import csrf, page_header with context %}
+{% from "admin/_icons.html" import icon with context %}
+{% block title %}{{ bot.name }}{% endblock %}
+{% block head %}{% if tab == 'whatsapp' and waiting_qr %}<meta http-equiv="refresh" content="20">{% endif %}{% endblock %}
+{% block content %}
+{%- set base = '/admin/offers/bots/' ~ bot.id -%}
+{%- set subtitle = ('@' ~ bot.telegram_username ~ ' · Bot de ofertas') if bot.telegram_username else 'Bot de ofertas' -%}
+{% call page_header(bot.name, subtitle) %}
+  <a class="btn btn-secondary" href="/admin/offers?bot={{ bot.id }}">{{ icon('tag') }}Ofertas deste bot</a>
+{% endcall %}
+
+<div class="segmented">
+  {% for key, label in tabs.items() %}<a href="?tab={{ key }}" class="{{ 'on' if tab == key }}">{{ label }}</a>{% endfor %}
+</div>
+
+<div class="layout-2col">
+<div>
+{# ======================================================== GERAL #}
+{% if tab == 'geral' %}
+  <section class="card">
+    <div class="card-header"><div class="card-icon">{{ icon('megaphone') }}</div>
+      <div><h2>Como este bot funciona</h2>
+        <p>De tempos em tempos ele busca ofertas no Mercado Livre e/ou na Shopee com os <b>filtros deste bot</b> e publica, no <b>modelo deste bot</b>,
+          nos <b>destinos deste bot</b>. Outros bots de ofertas têm as próprias configurações.</p></div></div>
+    <ul class="checklist">
+      {% set items = [
+        (credentials_ok, 'Loja configurada (Mercado Livre e/ou Shopee)', '/admin/offers/settings'),
+        (bot.telegram_username, 'Token do Telegram (bot próprio no @BotFather)', '?tab=telegram'),
+        (tg_targets|selectattr('is_active')|list|length > 0, 'Canal/grupo do Telegram cadastrado', '?tab=telegram'),
+        (cfg.wa_enabled and wa_targets|length > 0, 'WhatsApp conectado com grupos (opcional)', '?tab=whatsapp'),
+        (last.summary, 'Primeira busca realizada', None),
+        (bot.is_active, 'Bot ligado', None)] %}
+      {% for ok, text, link in items %}
+        <li>{{ icon('check' if ok else 'clock', 'ok' if ok else 'no') }}<span>{% if link and not ok %}<a href="{{ link }}">{{ text }}</a>{% else %}{{ text }}{% endif %}</span></li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  {% if admin.is_superuser %}
+  <section class="card">
+    <h2 class="mb-3">Nome</h2>
+    <form method="post" action="{{ base }}/general" class="row-form">{{ csrf() }}
+      <input name="name" value="{{ bot.name }}" maxlength="80" required>
+      <button class="btn btn-secondary">{{ icon('save') }}Salvar</button>
+    </form>
+  </section>
+
+  <section class="card danger-zone">
+    <details>
+      <summary class="hint">Excluir este bot</summary>
+      <form method="post" action="{{ base }}/delete" class="form mt-3" data-confirm="Excluir o bot e todo o histórico de postagens dele? Não dá para desfazer.">{{ csrf() }}
+        <label>Digite o nome do bot para confirmar <input name="confirm_name" required placeholder="{{ bot.name }}"></label>
+        <button class="btn btn-danger btn-sm">{{ icon('trash') }}Excluir bot</button>
+      </form>
+    </details>
+  </section>
+  {% endif %}
+
+{# ======================================================== TELEGRAM #}
+{% elif tab == 'telegram' %}
+  <section class="card">
+    <div class="card-header"><div class="card-icon">{{ icon('key') }}</div>
+      <div><h2>Token do Telegram</h2>
+        <p>Cada bot de ofertas é um bot próprio no Telegram, com nome e foto próprios. Não use o token do bot de vendas.</p></div></div>
+    {% if bot.telegram_username %}
+      <div class="alert alert-ok">{{ icon('check') }}<span>Conectado como <a href="https://t.me/{{ bot.telegram_username }}" target="_blank" rel="noopener"><b>@{{ bot.telegram_username }}</b></a>. Abra o bot e envie <code>/start</code> para receber os alertas dele.</span></div>
+      {% if admin.is_superuser %}
+      <form method="post" action="{{ base }}/token/remove" data-confirm="Remover o token? O Telegram deste bot para de publicar.">{{ csrf() }}
+        <button class="btn btn-sm btn-secondary">Remover token</button></form>
+      {% endif %}
+    {% else %}
+      <ol class="steps-list">
+        <li>No Telegram, abra o <a href="https://t.me/BotFather" target="_blank" rel="noopener">@BotFather</a> e envie <code>/newbot</code>.</li>
+        <li>Escolha o nome (ex.: <i>{{ bot.name }}</i>) e o usuário (terminando em <code>bot</code>).</li>
+        <li>Copie o token que ele envia e cole abaixo.</li>
+      </ol>
+    {% endif %}
+    {% if admin.is_superuser %}
+    <form method="post" action="{{ base }}/token" class="row-form mt-2">{{ csrf() }}
+      <input name="token" type="password" required autocomplete="off" maxlength="100" placeholder="{{ 'Trocar token: cole o novo' if bot.telegram_username else '123456789:ABC...' }}">
+      <button class="btn">{{ icon('save') }}{{ 'Trocar token' if bot.telegram_username else 'Salvar token' }}</button>
+    </form>
+    <p class="hint">{{ icon('lock') }} O token é conferido no Telegram e guardado criptografado.</p>
+    {% endif %}
+  </section>
+
+  <section class="card">
+    <div class="card-header"><div class="card-icon">{{ icon('send') }}</div>
+      <div><h2>Canais e grupos do Telegram</h2>
+        <p>Adicione o bot como <b>administrador</b> do canal/grupo (com permissão de publicar). Ele aparece abaixo para adicionar com 1 clique.</p></div></div>
+    {% if tg_targets %}
+    <div class="table-wrap"><table>
+      <thead><tr><th>Destino</th><th>ID</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {% for t in tg_targets %}
+        <tr class="{{ 'muted' if not t.is_active }}">
+          <td>{{ t.name }}</td><td><code>{{ t.target_id }}</code></td>
+          <td>{% if t.is_active %}<span class="badge badge-ok"><span class="dot"></span>Ativo</span>{% else %}<span class="badge badge-muted"><span class="dot"></span>Pausado</span>{% endif %}</td>
+          <td class="nowrap">{% if admin.is_superuser %}
+            <form method="post" action="{{ base }}/targets/{{ t.id }}/toggle" class="inline">{{ csrf() }}<button class="btn btn-sm btn-secondary">{{ 'Pausar' if t.is_active else 'Ativar' }}</button></form>
+            <form method="post" action="{{ base }}/targets/{{ t.id }}/remove" class="inline" data-confirm="Remover este destino?">{{ csrf() }}<button class="btn btn-sm btn-danger">{{ icon('trash') }}</button></form>
+          {% endif %}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table></div>
+    {% else %}<p class="hint mb-3">Nenhum destino ainda.</p>{% endif %}
+
+    {% if seen_chats and admin.is_superuser %}
+      <h3 class="mt-3 mb-3">Encontrados pelo bot</h3>
+      <ul class="today-list">
+      {% for c in seen_chats %}
+        <li><span>{{ c.title }} <small class="hint">{{ c.type }} · <code>{{ c.id }}</code>{% if not c.can_post %} · sem permissão para publicar{% endif %}</small></span>
+          <form method="post" action="{{ base }}/targets/add" class="inline">{{ csrf() }}
+            <input type="hidden" name="target_id" value="{{ c.id }}"><input type="hidden" name="name" value="{{ c.title }}">
+            <button class="btn btn-sm">{{ icon('plus') }}Adicionar</button></form></li>
+      {% endfor %}
+      </ul>
+    {% endif %}
+
+    {% if admin.is_superuser %}
+    <form method="post" action="{{ base }}/targets/add" class="form mt-3">{{ csrf() }}
+      <div class="grid2">
+        <label>Canal ou grupo <small>@nomedocanal ou ID (-100...)</small><input name="target_id" required maxlength="64" placeholder="@meucanal"></label>
+        <label>Nome <small>só para você identificar</small><input name="name" maxlength="120" placeholder="Canal Ofertas Tech"></label>
+      </div>
+      <button class="btn btn-secondary">{{ icon('plus') }}Adicionar destino</button>
+    </form>
+    <p class="hint mt-2">Canal privado: encaminhe um post do canal para o bot (no privado) e ele responde com o ID.</p>
+    {% endif %}
+  </section>
+
+{# ======================================================== WHATSAPP #}
+{% elif tab == 'whatsapp' %}
+  {%- set connected = wa_state == 'open' -%}
+  {%- set has_groups = wa.groups|length > 0 -%}
+  {%- set plan = limits.plan -%}
+  {% if wa_error %}<div class="alert alert-error">{{ icon('alert') }}<span>{{ wa_error }}</span></div>{% endif %}
+  <section class="card">
+    <div class="card-header"><div class="card-icon">{{ icon('phone') }}</div>
+      <div><h2>1. Número deste bot</h2>
+        {% if connected %}<p>Conectado{% if wa_number %} ao número <b>+{{ wa_number }}</b>{% endif %}. Cada bot usa o <b>próprio chip</b>.</p>
+        {% else %}<p>Use um chip só para este bot — se um número for bloqueado, os outros bots continuam.</p>{% endif %}</div></div>
+    {% if connected %}
+      {% if admin.is_superuser %}
+      <form method="post" action="{{ base }}/whatsapp/logout" data-confirm="Desconectar este número? Os envios deste bot serão pausados.">{{ csrf() }}
+        <button class="btn btn-sm btn-secondary">{{ icon('logout') }}Desconectar</button></form>
+      {% endif %}
+    {% elif wa_state == 'unknown' %}
+      <p class="hint">O serviço do WhatsApp não está respondendo. Tente novamente em alguns instantes.</p>
+    {% elif qr_image %}
+      <div class="qr-box">
+        <img src="{{ qr_image }}" alt="QR Code para conectar o WhatsApp">
+        <ol class="steps-list">
+          <li>Pegue o celular com o <b>chip deste bot</b> e abra o WhatsApp.</li>
+          <li>⋮ (ou Configurações) → <b>Aparelhos conectados</b> → <b>Conectar um aparelho</b>.</li>
+          <li>Aponte a câmera para este QR Code.</li>
+        </ol>
+      </div>
+      <p class="hint mt-3">{{ icon('clock') }} A página se atualiza sozinha até conectar.</p>
+    {% elif admin.is_superuser %}
+      <form method="post" action="{{ base }}/whatsapp/connect">{{ csrf() }}
+        <button class="btn btn-lg">{{ icon('qr') }}Gerar QR Code</button></form>
+    {% endif %}
+  </section>
+
+  {% if connected %}
+  <section class="card">
+    <h2 class="mb-3">2. Grupos que recebem as ofertas deste bot</h2>
+    {% if not wa_groups %}
+      <p class="hint">Este número ainda não participa de nenhum grupo. Crie um grupo (ou adicione o número a um) e recarregue.</p>
+    {% else %}
+      <form method="post" action="{{ base }}/whatsapp/groups">{{ csrf() }}
+        <div class="pills">
+          {% for g in wa_groups %}
+          <label class="pill"><input type="checkbox" name="group_ids" value="{{ g.id }}" {{ 'checked' if g.id in wa_selected }} {{ 'disabled' if not admin.is_superuser }}>
+            <span>{{ g.name }}{% if g.size %} <small>· {{ g.size }} pessoas</small>{% endif %}</span></label>
+          {% endfor %}
+        </div>
+        {% if admin.is_superuser %}<button class="btn">{{ icon('save') }}Salvar grupos</button>{% endif %}
+      </form>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {% if has_groups %}
+  <section class="card">
+    <h2 class="mb-3">3. Envio automático</h2>
+    <div class="timeline">
+      <div class="tl-item {{ 'on' if plan.phase == 'aquecimento' }}"><span class="tl-dot"></span>
+        <div><b>{% if wa.warmup_days %}Primeiros {{ wa.warmup_days }} dias{% else %}Sem aquecimento{% endif %}</b>
+          {% if plan.phase == 'aquecimento' %}<span class="badge badge-warn"><span class="dot"></span>agora · dia {{ plan.warmup_day }}</span>{% endif %}
+          {% if wa.warmup_days %}<p>Até <b>{{ wa.warmup_per_day }} ofertas por dia</b>, espalhadas.</p>{% endif %}</div></div>
+      <div class="tl-item {{ 'on' if plan.phase == 'normal' }}"><span class="tl-dot"></span>
+        <div><b>Depois disso</b>
+          <p><b>{{ wa.max_per_window }} ofertas a cada {{ wa.window_hours }} horas</b>, no máximo {{ wa.max_per_day }} por dia.</p></div></div>
+    </div>
+    {% if admin.is_superuser %}
+    <div class="step-actions">
+      <form method="post" action="{{ base }}/whatsapp/toggle">{{ csrf() }}
+        {% if cfg.wa_enabled %}<button class="btn btn-danger">{{ icon('pause') }}Pausar envios</button>
+        {% else %}<button class="btn btn-success">{{ icon('play') }}Ativar envios</button>{% endif %}
+      </form>
+      <form method="post" action="{{ base }}/whatsapp/test" class="row-form">{{ csrf() }}
+        <select name="group_id" aria-label="Grupo para teste">{% for g in wa.groups %}<option value="{{ g.id }}">{{ g.name }}</option>{% endfor %}</select>
+        <button class="btn btn-secondary" data-loading="Enviando...">{{ icon('send') }}Mensagem de teste</button>
+      </form>
+    </div>
+    <details class="advanced">
+      <summary>{{ icon('sliders') }}Ajustar ritmo (avançado)</summary>
+      <form method="post" action="{{ base }}/whatsapp/settings" class="form">{{ csrf() }}
+        <div class="grid2">
+          <label>Dias de aquecimento <small>0 = direto no ritmo normal</small><input name="wa_warmup_days" value="{{ wa.warmup_days }}" inputmode="numeric"></label>
+          <label>Ofertas por dia no aquecimento <small>máximo 10</small><input name="wa_warmup_per_day" value="{{ wa.warmup_per_day }}" inputmode="numeric"></label>
+          <label>Depois: quantas ofertas… <small>máximo 10</small><input name="wa_max_per_window" value="{{ wa.max_per_window }}" inputmode="numeric"></label>
+          <label>…a cada quantas horas<input name="wa_window_hours" value="{{ wa.window_hours }}" inputmode="numeric"></label>
+          <label>Limite por dia <small>máximo 60</small><input name="wa_max_per_day" value="{{ wa.max_per_day }}" inputmode="numeric"></label>
+          <label>Espera entre grupos <small>segundos · mínimo 5</small><input name="wa_group_delay_seconds" value="{{ wa.group_delay_seconds }}" inputmode="numeric"></label>
+          <label>Descartar oferta parada há mais de <small>horas</small><input name="wa_max_age_hours" value="{{ wa.max_age_hours }}" inputmode="numeric"></label>
+        </div>
+        <button class="btn">{{ icon('save') }}Salvar ritmo</button>
+      </form>
+      {% if wa.started_at %}
+      <form method="post" action="{{ base }}/whatsapp/warmup/reset" class="switch-row mt-3" data-confirm="Recomeçar o aquecimento a partir de hoje?">{{ csrf() }}
+        <span class="hint">Trocou de chip? Recomece o aquecimento.</span>
+        <button class="btn btn-sm btn-secondary">{{ icon('undo') }}Recomeçar aquecimento</button>
+      </form>
+      {% endif %}
+    </details>
+    {% endif %}
+  </section>
+  {% endif %}
+
+{# ======================================================== BUSCA #}
+{% elif tab == 'busca' %}
+  <form method="post" action="{{ base }}/search" class="form">{{ csrf() }}
+    <section class="card">
+      <h2 class="mb-3">Lojas</h2>
+      <p class="hint mb-3">De onde este bot busca ofertas. As contas ficam em <a href="/admin/offers/settings">Lojas e APIs</a>.</p>
+      <div class="pills">
+        <label class="pill"><input type="checkbox" name="src_mercadolivre" value="1" {{ 'checked' if cfg.use_mercadolivre }}><span>Mercado Livre{% if not cfg.credentials_ok %} <small>· sem credenciais</small>{% endif %}</span></label>
+        <label class="pill"><input type="checkbox" name="src_shopee" value="1" {{ 'checked' if cfg.use_shopee }}><span>Shopee{% if not cfg.shopee_credentials_ok %} <small>· sem credenciais</small>{% endif %}</span></label>
+      </div>
+    </section>
+    <section class="card">
+      <h2 class="mb-3">Publicação</h2>
+      <div class="grid4">
+        <label>Modo
+          <select name="mode">
+            <option value="auto" {{ 'selected' if cfg.mode == 'auto' }}>Automático — publica as melhores</option>
+            <option value="manual" {{ 'selected' if cfg.mode == 'manual' }}>Manual — você aprova cada uma</option>
+          </select></label>
+        <label>Buscar a cada <small>minutos</small><input name="interval_minutes" value="{{ cfg.interval_minutes }}" inputmode="numeric"></label>
+        <label>Posts por busca <small>máximo</small><input name="max_posts_per_cycle" value="{{ cfg.max_posts_per_cycle }}" inputmode="numeric"></label>
+        <label>Intervalo entre posts <small>segundos</small><input name="spacing_seconds" value="{{ cfg.spacing_seconds }}" inputmode="numeric"></label>
+        <label>Horário ativo <small>vazio = 24h</small><input name="active_hours" value="{{ values.active_hours }}" placeholder="08:00-23:00"></label>
+        <label>Não repetir produto <small>dias</small><input name="no_repeat_days" value="{{ cfg.no_repeat_days }}" inputmode="numeric"></label>
+      </div>
+    </section>
+    <section class="card">
+      <h2 class="mb-3">Filtros</h2>
+      <div class="grid4">
+        <label>Desconto mínimo <small>%</small><input name="min_discount" value="{{ cfg.min_discount }}" inputmode="numeric"></label>
+        <label>Preço mínimo <small>R$ · 0 = sem limite</small><input name="min_price" value="{{ values.min_price }}" inputmode="decimal"></label>
+        <label>Preço máximo <small>R$ · 0 = sem limite</small><input name="max_price" value="{{ values.max_price }}" inputmode="decimal"></label>
+      </div>
+      <label>Palavras bloqueadas <small>separe por vírgula</small>
+        <input name="blocked_words" value="{{ values.blocked_words }}" placeholder="capinha, película, usado"></label>
+    </section>
+    <section class="card">
+      <h2 class="mb-3">O que buscar na Shopee</h2>
+      <p class="hint mb-3">Busca por palavras-chave e/ou IDs de categoria. Sem nada, pega as ofertas mais vendidas. Os filtros acima (desconto, preço, palavras bloqueadas) valem para as duas lojas.</p>
+      <div class="grid2">
+        <label>Palavras-chave <small>até 10, separadas por vírgula</small><input name="shopee_keywords" value="{{ values.shopee_keywords }}" placeholder="fone bluetooth, air fryer"></label>
+        <label>Ordenar por
+          <select name="shopee_sort">{% for key, label in shopee_sorts.items() %}<option value="{{ key }}" {{ 'selected' if cfg.shopee_sort == key }}>{{ label }}</option>{% endfor %}</select></label>
+        <label>Categorias <small>IDs numéricos da Shopee, opcional</small><input name="shopee_categories" value="{{ values.shopee_categories }}" placeholder="100636, 100013"></label>
+      </div>
+    </section>
+    <section class="card">
+      <h2 class="mb-3">O que buscar no Mercado Livre</h2>
+      <p class="hint mb-3">Mais vendidos das categorias e/ou busca por palavras-chave. Sem seleção, usa categorias populares.</p>
+      <div class="pills">
+        {% for cid, name in categories.items() %}
+        <label class="pill"><input type="checkbox" name="categories" value="{{ cid }}" {{ 'checked' if cid in selected_categories }}><span>{{ name }}</span></label>
+        {% endfor %}
+      </div>
+      <div class="grid2">
+        <label>Outras categorias <small>IDs MLB, separados por vírgula</small><input name="extra_categories" value="{{ extra_categories }}" placeholder="MLB1234, MLB5678"></label>
+        <label>Palavras-chave <small>até 10</small><input name="keywords" value="{{ values.keywords|replace('\n', ', ') }}" placeholder="air fryer, fone bluetooth"></label>
+      </div>
+      {% if admin.is_superuser %}<div class="card-footer"><button class="btn btn-lg">{{ icon('save') }}Salvar busca e filtros</button></div>{% endif %}
+    </section>
+  </form>
+
+{# ======================================================== MODELO DO POST #}
+{% elif tab == 'post' %}
+  <form method="post" action="{{ base }}/template" class="form">{{ csrf() }}
+    <section class="card">
+      <h2 class="mb-3">Modelo do post</h2>
+      <p class="hint mb-3">Vale para o Telegram e o WhatsApp deste bot.</p>
+      <div class="template-editor">
+        <label>Modelo <small>*negrito* · _itálico_ · ~riscado~ · linhas com marcador vazio somem</small>
+          <textarea name="template" rows="10" maxlength="1500" spellcheck="false">{{ cfg.template }}</textarea></label>
+        <div><span class="label-like">Prévia (exemplo)</span>
+          <div class="wa-bubble"><pre>{{ template_preview }}</pre></div></div>
+      </div>
+      <div class="placeholders">
+        {% for name, desc in placeholders.items() %}<span class="pill-static" title="{{ desc }}"><code>{{ '{' ~ name ~ '}' }}</code> {{ desc }}</span>{% endfor %}
+      </div>
+      <div class="grid2">
+        <label>Chamada padrão <small>quando a oferta não tem chamada própria</small><input name="default_headline" value="{{ cfg.default_headline }}" maxlength="120"></label>
+        <label>Rodapé <small>marcador {rodape} · aviso de link de afiliado</small><input name="footer" value="{{ cfg.footer }}" maxlength="500"></label>
+      </div>
+      <label class="check-inline"><input type="checkbox" name="reset_template" value="1"> Restaurar o modelo padrão ao salvar</label>
+      {% if admin.is_superuser %}<div class="card-footer"><button class="btn btn-lg">{{ icon('save') }}Salvar modelo</button></div>{% endif %}
+    </section>
+  </form>
+{% endif %}
+</div>
+
+{# ======================================================== LATERAL #}
+<aside class="sticky">
+  <section class="card">
+    <div class="status-hero">
+      <span class="status-dot {{ 'on' if bot.is_active }}"></span>
+      <div><b>{{ 'Bot ligado' if bot.is_active else 'Bot desligado' }}</b><small>Modo {{ 'automático' if cfg.mode == 'auto' else 'manual' }}</small></div>
+    </div>
+    {% if admin.is_superuser %}
+    <form method="post" action="{{ base }}/toggle">{{ csrf() }}
+      {% if bot.is_active %}<button class="btn btn-danger btn-block">{{ icon('pause') }}Desligar bot</button>
+      {% else %}<button class="btn btn-success btn-block">{{ icon('play') }}Ligar bot</button>{% endif %}
+    </form>
+    {% endif %}
+    <div class="divider"></div>
+    <div class="mini-stats">
+      <div class="mini-stat"><span>Telegram 24h</span><b>{{ stats.posted_24h }}</b></div>
+      <div class="mini-stat"><span>WhatsApp 24h</span><b>{{ stats.wa_24h }}</b></div>
+      <div class="mini-stat"><span>Na fila</span><b>{{ stats.queued }}</b></div>
+      <div class="mini-stat"><span>Aguardando</span><b>{{ stats.new }}</b></div>
+    </div>
+    {% if last.summary %}<p class="hint mt-2"><b>Última busca:</b> {{ last.summary }}</p>{% endif %}
+    {% if admin.is_superuser %}
+    <div class="divider"></div>
+    <div class="stack">
+      <form method="post" action="{{ base }}/test">{{ csrf() }}
+        <button class="btn btn-secondary btn-block" data-loading="Testando...">{{ icon('plug') }}Testar lojas</button></form>
+      <form method="post" action="{{ base }}/run" data-confirm="Buscar ofertas agora? Pode levar até 1 minuto.">{{ csrf() }}
+        <button class="btn btn-secondary btn-block" data-loading="Buscando ofertas...">{{ icon('search') }}Buscar ofertas agora</button></form>
+    </div>
+    {% endif %}
+    {% if test_results %}
+    <div class="test-results">
+      {% for t in test_results %}
+      <div class="test-row {{ 'ok' if t.ok else 'fail' }}">{{ icon('check' if t.ok else 'x') }}
+        <div><b>{{ t.step }}</b><small class="hint">{{ t.detail }}</small></div></div>
+      {% endfor %}
+    </div>
+    {% endif %}
+  </section>
+</aside>
+</div>
+{% endblock %}

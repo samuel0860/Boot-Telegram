@@ -1,4 +1,4 @@
-# Telegram Vendas — Funil de vendas automatizado (Python + Telegram + PostgreSQL)
+# Telegram Vendas — Vendas próprias + Bots de ofertas (Python + Telegram + WhatsApp + PostgreSQL)
 
 Página de entrada → bot do Telegram → cobrança PIX (Mercado Pago) → confirmação por webhook → liberação automática do conteúdo, com painel administrativo. Banco de dados: **PostgreSQL 16 em Docker**.
 
@@ -18,33 +18,58 @@ Página de entrada → bot do Telegram → cobrança PIX (Mercado Pago) → conf
 13. [Como testar cada funcionalidade](#13-como-testar-cada-funcionalidade)
 14. [Segurança](#14-segurança)
 15. [Banco de dados](#15-banco-de-dados)
+16. [Módulo de ofertas: bots de ofertas](#16-módulo-de-ofertas-bots-de-ofertas-mercado-livre-e-shopee--telegram-e-whatsapp)
+17. [Módulo de vendas: cupons, recuperação de PIX, upsell e origem](#17-módulo-de-vendas-cupons-recuperação-de-pix-upsell-e-origem)
+18. [Operação](#18-operação)
 
 ---
 
 ## 1. Arquitetura
 
+O sistema tem **dois módulos independentes**, cada um com processo, bot(s) e configurações próprios. Eles só compartilham o banco, o painel e o cadastro de administradores.
+
+| | Módulo de **VENDAS** (bot próprio) | Módulo de **OFERTAS** (afiliados) |
+|---|---|---|
+| Objetivo | Vender **seus** produtos/serviços pelo Telegram | Alimentar **seus grupos de ofertas** com promoções do Mercado Livre e da Shopee |
+| Bots | **1** bot do Telegram (`TELEGRAM_BOT_TOKEN` no `.env`) | **Vários** bots, cadastrados no painel. Cada um com token próprio do Telegram e número próprio de WhatsApp |
+| Dinheiro | Gateway de pagamento configurado por você (hoje Mercado Pago, PIX), direto na **sua conta** | Comissão do programa de afiliados (sem cobrança no sistema) |
+| Processo (compose) | `telegram_bot` → `python sales_bot.py` | `offers_bot` → `python offers_bot.py` |
+| Código | `sales/` | `offers/` |
+| Painel | Vendas · bot próprio | Ofertas · afiliados |
+
 ```
- TikTok ──► Página (/)  ──► t.me/SeuBot?start=tiktok
+ MÓDULO DE VENDAS
+ TikTok ──► Página (/) ──► t.me/SeuBot?start=tiktok
                                │
                     ┌──────────▼──────────┐       ┌──────────────────┐
-                    │ telegram_bot        │──────►│  Mercado Pago    │
-                    │ (python-telegram-bot│ cria  │  (PIX)           │
-                    │  polling + jobs)    │ PIX   └───────┬──────────┘
-                    └──────────┬──────────┘               │ webhook (assinado)
-                               │                          ▼
-                    ┌──────────▼──────────┐       ┌──────────────────┐
+                    │ telegram_bot        │──────►│ Gateway (hoje:   │
+                    │ sales_bot.py        │ cria  │ Mercado Pago PIX)│
+                    └──────────┬──────────┘ PIX   └───────┬──────────┘
+                               │                          │ webhook (assinado)
+                    ┌──────────▼──────────┐       ┌───────▼──────────┐
                     │ PostgreSQL 16       │◄──────│ backend (FastAPI)│
-                    │ telegram_postgres   │       │ página, webhook, │
-                    └─────────────────────┘       │ painel /admin    │
-                                                  └──────────────────┘
+                    └──────────▲──────────┘       │ página + painel  │
+                               │                  └──────────────────┘
+ MÓDULO DE OFERTAS             │
+                    ┌──────────┴──────────┐  API   ┌──────────────────┐
+                    │ offers_bot          │◄──────►│ Mercado Livre    │
+                    │                     │◄──────►│ Shopee (afiliado)│
+                    │ offers_bot.py       │        └──────────────────┘
+                    │  ├ Bot de ofertas 1 ├──► canais/grupos Telegram (token 1)
+                    │  ├ Bot de ofertas 2 ├──► canais/grupos Telegram (token 2)
+                    │  └ ...              ├──► grupos WhatsApp (1 número por bot)
+                    └─────────────────────┘        via serviço `whatsapp` (Evolution API)
 ```
 
 | Serviço (compose) | Função |
 |---|---|
 | `postgres` | Banco (container `telegram_postgres`), volume persistente, healthcheck |
-| `migrate` | Executa `alembic upgrade head` e encerra (backend e bot só iniciam depois dele) |
+| `migrate` | Executa `alembic upgrade head` e encerra (os demais só iniciam depois dele) |
 | `backend` | FastAPI: página inicial, `/webhooks/mercadopago`, painel `/admin`, `/health` |
-| `telegram_bot` | Bot: atendimento, compra, entrega, expirações, controle de grupos |
+| `telegram_bot` | **Vendas**: atendimento, compra, entrega, expirações, controle de grupos pagos |
+| `offers_bot` | **Ofertas**: roda todos os bots de ofertas (busca, Telegram, WhatsApp) |
+| `whatsapp` | Gateway do WhatsApp (Evolution API) — uma instância (número) por bot de ofertas |
+| `backup` | Backup diário do banco |
 | `caddy` (opcional, `--profile proxy`) | HTTPS automático (Let's Encrypt) na frente do backend |
 
 **Fluxo do pagamento (nunca libera por clique):**
@@ -59,30 +84,58 @@ Página de entrada → bot do Telegram → cobrança PIX (Mercado Pago) → conf
 ```
 .
 ├── app.py                  # Backend FastAPI (página, webhook, painel)
-├── bot.py                  # Bot do Telegram (processo separado)
+├── sales_bot.py            # VENDAS: processo do bot de vendas
+├── offers_bot.py           # OFERTAS: processo que roda todos os bots de ofertas
 ├── config.py               # Configuração via .env (python-dotenv)
 ├── database.py             # SQLAlchemy: engine, sessões, Base
 ├── models.py               # Models de todas as tabelas
-├── payments.py             # Cliente Mercado Pago (PIX) + validação de assinatura
-├── manage.py               # CLI: create-admin, seed, check, reconcile...
+├── manage.py               # CLI: create-admin, seed, check, reconcile, bot-health, purge...
 ├── seed_data.json          # Planos/categorias/conteúdos iniciais
-├── admin/
-│   ├── auth.py             # Argon2, sessão, CSRF, bloqueio por tentativas
-│   └── routes.py           # Rotas do painel
-├── services/
+├── sales/                  # ===== MÓDULO DE VENDAS =====
+│   ├── payments.py         # Gateway de pagamento (hoje Mercado Pago) — ponto de troca
+│   ├── payment_service.py  # Checkout (com cupom), webhook, reconciliação (transacional)
 │   ├── access_service.py   # Liberação, validade, expiração, revogação
-│   ├── payment_service.py  # Checkout, webhook, reconciliação (transacional)
-│   ├── telegram_service.py # Entrega, convites, remoção de grupos, jobs
-│   ├── catalog_service.py  # Planos e catálogo para o bot
+│   ├── sales_service.py    # Cupons, recuperação de PIX, upsell, funil por origem
+│   ├── telegram_service.py # Entrega, convites, remoção de grupos, lembretes
+│   ├── catalog_service.py  # Planos e catálogo
 │   ├── user_service.py     # Cadastro de usuários (UPSERT pelo Telegram ID)
-│   └── texts.py            # Todas as mensagens do bot
-├── templates/              # index.html (página) + admin/*.html
+│   ├── alerts.py           # Alertas e resumo diário das vendas
+│   ├── texts.py            # Todas as mensagens do bot de vendas
+│   └── bot/                # Handlers: menu, planos, /cupom, PIX, admin, grupos, jobs
+├── offers/                 # ===== MÓDULO DE OFERTAS =====
+│   ├── bots.py             # Cadastro dos bots: token, número, destinos, estado
+│   ├── config.py           # Configuração de cada bot (filtros, modelo, ritmo do WhatsApp)
+│   ├── collector.py        # Busca no Mercado Livre por bot, filtros e fila
+│   ├── posting.py          # Publicação nos canais/grupos do Telegram
+│   ├── whatsapp.py         # Envio aos grupos do WhatsApp (Evolution API), limites por número
+│   ├── converter.py        # Modo "colar link" (admin manda o link ao bot de ofertas)
+│   ├── post_template.py    # Modelo do post (Telegram + WhatsApp)
+│   ├── mercadolivre.py     # Cliente da API do Mercado Livre
+│   ├── shopee.py           # Cliente da API de afiliados da Shopee (GraphQL assinado)
+│   ├── alerts.py           # Alertas e resumo diário de cada bot de ofertas
+│   ├── telegram_bot.py     # Handlers do Telegram de cada bot de ofertas
+│   └── runtime.py          # Laço do processo: liga/desliga bots, busca, publica
+├── core/                   # ===== COMPARTILHADO =====
+│   ├── settings_service.py # Configurações do painel (segredos criptografados)
+│   ├── alert_service.py    # Vínculo do Telegram dos admins, cooldown de alertas, sinal de vida
+│   ├── audit.py            # Relógio UTC e registro de auditoria
+│   ├── error_reporter.py   # Avisa os admins no Telegram quando ocorre um erro
+│   └── retention_service.py# LGPD: limpeza automática e anonimização
+├── admin/
+│   ├── auth.py             # Argon2, sessão, CSRF, limites de tentativas
+│   ├── totp.py             # Verificação em duas etapas (TOTP) + QR Code
+│   ├── common.py           # Templates, flash, paginação, auditoria
+│   ├── routes.py           # Junta as telas sob /admin
+│   └── views/              # Uma tela por arquivo (vendas: sales, funnel, coupons, catalog;
+│                           #   ofertas: offers; geral: dashboard, accounts, history, auth_views)
+├── templates/              # index.html (página), privacy.html + admin/*.html
 ├── static/                 # css, js, images
 ├── migrations/             # Alembic (env.py + versions/)
 ├── scripts/                # backup.sh, restore.sh
 ├── tests/                  # Testes automatizados (PostgreSQL real)
+├── .github/workflows/      # CI: ruff + pytest a cada push
 ├── backups/                # Destino dos backups (ignorado no Git)
-├── Dockerfile, docker-compose.yml, Caddyfile, Makefile
+├── Dockerfile, docker-compose.yml, Caddyfile, Makefile, pyproject.toml (ruff/pytest)
 ├── requirements.txt, requirements-dev.txt
 └── .env.example            # Modelo de configuração (o .env real NÃO vai para o Git)
 ```
@@ -110,13 +163,15 @@ pip install -r requirements-dev.txt
 
 ## 4. Criar o bot no BotFather
 
+Este é o bot de **vendas**. Os bots de **ofertas** são outros bots, criados do mesmo jeito e cadastrados no painel (seção 16).
+
 1. No Telegram, abra **@BotFather** → `/newbot`.
 2. Escolha o nome e o username (precisa terminar em `bot`, ex.: `MinhaLojaBot`).
 3. Copie o token para `TELEGRAM_BOT_TOKEN` e o username (sem @) para `TELEGRAM_BOT_USERNAME`.
 4. Recomendado no BotFather: `/setdescription`, `/setabouttext`, `/setuserpic`.
 5. Descubra seu ID numérico (ex.: com **@userinfobot**) e coloque em `ADMIN_TELEGRAM_IDS` — libera os comandos de administrador (`/chatid` e captura de `file_id`).
 
-Os comandos do menu (`/start`, `/planos`, `/meusacessos`, `/suporte`) são registrados automaticamente quando o bot inicia.
+Os comandos do menu (`/start`, `/planos`, `/cupom`, `/meusacessos`, `/suporte`) são registrados automaticamente quando o bot inicia.
 
 ## 5. Configurar o PIX (Mercado Pago)
 
@@ -165,7 +220,8 @@ alembic upgrade head                  # migrations
 python manage.py seed
 python manage.py create-admin --username admin --superuser
 uvicorn app:app --reload --port 8000  # terminal 1: backend
-python bot.py                         # terminal 2: bot
+python sales_bot.py                   # terminal 2: bot de vendas
+python offers_bot.py                  # terminal 3: bots de ofertas
 ```
 
 ## 8. Comandos do dia a dia
@@ -184,6 +240,9 @@ python bot.py                         # terminal 2: bot
 | Abrir psql | `docker exec -it telegram_postgres sh -c 'psql -U "$POSTGRES_USER" -d "$POSTGRES_DB"'` | `make psql` |
 | Trocar senha de admin | `docker compose exec backend python manage.py set-password --username admin` | |
 | Reconciliar pagamentos manualmente | `docker compose exec backend python manage.py reconcile` | |
+| Desativar 2FA de um admin (perdeu o celular) | `docker compose exec backend python manage.py reset-2fa --username admin` | `make reset-2fa u=admin` |
+| Limpar registros antigos agora (LGPD) | `docker compose exec backend python manage.py purge` | |
+| Lint + testes num container | — | `make test-docker` |
 
 > ⚠️ `docker compose down -v` **apaga o volume do banco**. Nunca use `-v` em produção.
 
@@ -271,19 +330,23 @@ Já usa Nginx? Não ative o profile `proxy`; faça `proxy_pass http://127.0.0.1:
 
 ## 13. Como testar cada funcionalidade
 
-**Testes automatizados** (usam o banco `telegram_vendas_test`, criado automaticamente; o cliente de pagamento falso existe apenas nos testes):
+**Testes automatizados** (usam o banco `telegram_vendas_test`, criado automaticamente — o banco real não é tocado; o cliente de pagamento falso existe apenas nos testes):
 ```bash
 docker compose up -d postgres
-docker compose run --rm -T -v "$PWD:/app" migrate sh -c \
-  "pip install -q --target /tmp/pt pytest && PYTHONPATH=/tmp/pt python -m pytest -q -p no:cacheprovider"
-# ou, com .venv local:  pytest -q
+make test-docker            # ruff + pytest dentro de um container
+# ou, com .venv local:  ruff check . && pytest -q
 ```
-Cobrem: cadastro sem duplicidade, checkout e reaproveitamento de PIX, clique em "verificar" sem pagamento não libera, aprovação libera uma única vez (inclusive com 8 processamentos concorrentes), divergência de valor bloqueia, pagamento tardio é honrado, estorno revoga, renovação soma período, expiração e remoção de grupos, webhook (assinatura inválida → 401, duplicado → ignorado), login/CSRF/bloqueio/permissões do painel, edição de preço.
+O GitHub Actions (`.github/workflows/ci.yml`) roda o mesmo a cada push.
+
+Cobrem: cadastro sem duplicidade, checkout e reaproveitamento de PIX, clique em "verificar" sem pagamento não libera, aprovação libera uma única vez (inclusive com 8 processamentos concorrentes), divergência de valor bloqueia, pagamento tardio é honrado, estorno revoga, renovação soma período, expiração e remoção de grupos, webhook (assinatura inválida → 401 e nada gravado, duplicado → ignorado), login/CSRF/limites de tentativa/2FA/permissões do painel, cupons (validade, limite de usos, plano), recuperação de PIX, upsell, funil por origem, modelo do post (igual ao modelo de referência), retenção LGPD, aviso de erros e healthcheck do bot.
 
 **Testes manuais:**
 | Funcionalidade | Como testar |
 |---|---|
-| Página | Abra `/`, marque "Não sou um robô" → animação → botão leva para `t.me/<bot>?start=tiktok` |
+| Página | Abra `/` → botão **Abrir no Telegram** leva para `t.me/<bot>?start=tiktok`; `/?start=tiktok-v12` repassa essa origem |
+| Cupom | Painel → Cupons → crie `TESTE10`; no bot envie `/cupom TESTE10` (ou abra `t.me/<bot>?start=tiktok__TESTE10`) → planos mostram o preço com desconto |
+| Recuperação de PIX | Gere um PIX e não pague: depois que ele expirar (+10 min), o bot manda "seu PIX expirou" com o botão **Gerar novo PIX** |
+| 2FA | Minha conta → Verificação em duas etapas → escaneie o QR → saia e entre de novo: o painel pede o código |
 | Cadastro | `/start` no bot → mensagem de boas-vindas; repita → "bem-vindo de volta"; veja em Painel → Usuários (um único registro) |
 | Menus | Botões: Ver conteúdo, Conhecer planos, Comprar acesso, Meus acessos, Suporte |
 | PIX | Comprar → QR Code + copia e cola + botões. Use credenciais de **teste** do Mercado Pago para pagar sem dinheiro real |
@@ -299,13 +362,16 @@ Cobrem: cadastro sem duplicidade, checkout e reaproveitamento de PIX, clique em 
 ## 14. Segurança
 
 - Segredos apenas no `.env` (ignorado pelo Git e pelo build do Docker). O token do bot nunca aparece no HTML/JS.
-- Senhas de admin com **Argon2id**; bloqueio temporário após 5 tentativas; tempo de resposta uniforme para usuário inexistente.
+- Senhas de admin com **Argon2id**; tempo de resposta uniforme para usuário inexistente. Limites de tentativas: 20 erros por IP (qualquer usuário), 5 erros do mesmo usuário **no mesmo IP** (um atacante não consegue trancar o admin legítimo) e 50 erros na conta (ataque distribuído). Janela: `ADMIN_LOCKOUT_MINUTES`.
+- **Verificação em duas etapas (TOTP)** opcional por administrador (Minha conta), com QR Code gerado no próprio servidor; o segredo fica criptografado e o mesmo código não pode ser usado duas vezes. Perdeu o celular: `make reset-2fa u=usuario`.
+- O backend só confia no `X-Forwarded-For` de `FORWARDED_ALLOW_IPS` (padrão `127.0.0.1`) — ninguém consegue falsificar o IP para driblar os limites de login.
 - Sessão em cookie assinado (`HttpOnly`, `SameSite=Lax`, `Secure` em produção), **CSRF** em todos os formulários, cabeçalhos CSP/HSTS/X-Frame-Options.
 - Perfis: **Operador** (consulta, bloqueia usuários, encerra acessos) e **Superusuário** (planos, preços, conteúdos, administradores). Ações administrativas ficam registradas em `access_logs` com IP.
-- Webhook com HMAC + reconsulta na API + validação de valor/pedido + idempotência; operações financeiras em transações com bloqueio de linha.
+- Webhook com HMAC **validado antes de gravar qualquer coisa** + reconsulta na API + validação de valor/pedido + idempotência; operações financeiras em transações com bloqueio de linha.
+- Erros (exceções dos jobs, do painel e do bot) são enviados aos administradores vinculados no Telegram, agrupados e sem repetir o mesmo erro por 30 min (`ERROR_REPORTS`). Tokens são removidos do texto.
+- **LGPD:** página `/privacidade`; registros técnicos antigos apagados automaticamente (`LOG_RETENTION_DAYS`, `WEBHOOK_RETENTION_DAYS`); botão **Anonimizar** na página do usuário para pedidos de exclusão (pedidos e pagamentos são mantidos como registro financeiro).
 - SQL somente via ORM/consultas parametrizadas (SQLAlchemy).
 - PostgreSQL com autenticação `scram-sha-256`, porta publicada apenas em `127.0.0.1`; containers da aplicação rodam com usuário não-root.
-- A "verificação" da página é **apenas uma etapa visual de interação** — não é CAPTCHA e não protege contra bots.
 
 ## 15. Banco de dados
 
@@ -325,51 +391,82 @@ Cobrem: cadastro sem duplicidade, checkout e reaproveitamento de PIX, clique em 
 
 Todas as tabelas têm PK, FKs com integridade referencial, índices para as consultas frequentes e `created_at`/`updated_at` (`TIMESTAMPTZ`, UTC).
 
-## 16. Bot de promoções (Mercado Livre → canal do Telegram)
+## 16. Módulo de ofertas: bots de ofertas (Mercado Livre e Shopee → Telegram e WhatsApp)
 
-O mesmo bot também busca ofertas no Mercado Livre e publica num canal do Telegram, com foto, preço "de/por", desconto e botão **🛒 Ver oferta**. Tudo é configurado no painel em **🔥 Promoções** (`/admin/promo`), sem editar arquivos nem reiniciar.
+Cada **bot de ofertas** alimenta os seus próprios canais/grupos. Exemplo: “Ofertas Tech” (@OfertasTechBot + 1 chip) nos grupos de tecnologia e “Ofertas Casa” (@OfertasCasaBot + outro chip) nos de casa. Tudo é feito no painel, sem editar arquivos nem reiniciar: o processo `offers_bot` lê os bots do banco a cada 10 s.
 
-### Configuração (uma vez)
-1. **Credenciais da API:** acesse <https://developers.mercadolivre.com.br/devcenter> → **Criar aplicação** (nome, descrição e uma URL de redirect qualquer com https, ex.: `https://seudominio.com.br`). Copie o **App ID** e a **Secret Key**.
-2. **Canal:** crie um canal no Telegram e adicione o bot como **administrador** com permissão de **Publicar mensagens**.
-   - Canal público: use `@nomedocanal`.
-   - Canal privado: mande `/id` ao bot, coloque seu ID em `ADMIN_TELEGRAM_IDS` no `.env`, reinicie o bot e **encaminhe um post do canal para o bot**. Ele responde com o ID (`-100...`).
-3. No painel → **🔥 Promoções**: cole App ID, Secret Key e o canal, escolha categorias e/ou palavras-chave, o desconto mínimo, a frequência e o horário → **Salvar**.
-4. Clique em **🔌 Testar conexão** (mostra cada etapa: token, mais vendidos, busca e preço) e depois em **🔎 Buscar ofertas agora**.
-5. Clique em **▶ Ligar bot**.
+### Configuração do módulo (uma vez) — Painel → Ofertas · afiliados → **Lojas e APIs**
+- **Mercado Livre:** em <https://developers.mercadolivre.com.br/devcenter> → **Criar aplicação** (qualquer URL de redirect com https). Copie o **App ID** e a **Secret Key**.
+- **Shopee:** em <https://affiliate.shopee.com.br> → **Open API**, copie o **AppID** e a **Senha**. A conta de afiliado precisa ter o acesso à Open API liberado. A API devolve o **link de afiliado pronto** (`offerLink`, com a sua comissão), então não é preciso colar link à mão.
+- Os segredos ficam **criptografados** e valem para todos os bots. Use **Testar** em cada loja.
+
+### Criar um bot de ofertas
+1. Painel → **Bots de ofertas** → **Criar bot** (dê um nome).
+2. Aba **Telegram**: crie um bot novo no **@BotFather** (`/newbot`) **só para ofertas** e cole o token. O painel confere o token no Telegram, guarda criptografado e recusa o token do bot de vendas.
+3. Adicione esse bot como **administrador** dos canais/grupos (permissão de publicar). Eles aparecem em **Encontrados pelo bot** para adicionar com 1 clique — ou digite `@canal` / `-100...`.
+4. Aba **WhatsApp** (opcional): **Gerar QR Code** e leia com o **chip deste bot**, escolha os grupos e ative os envios.
+5. Aba **Busca e filtros**: **lojas** (Mercado Livre e/ou Shopee), desconto mínimo, faixa de preço, palavras bloqueadas, horário, modo automático/manual; no Mercado Livre, categorias e palavras-chave; na Shopee, palavras-chave, IDs de categoria e ordenação (mais vendidos, maior comissão...).
+6. Aba **Modelo do post**: texto das publicações (veja abaixo).
+7. **Testar Mercado Livre** → **Buscar ofertas agora** → **Ligar bot**.
 
 ### Como funciona
-- A cada *N* minutos (dentro do horário ativo), o bot busca os **mais vendidos** das categorias escolhidas e/ou faz uma **busca no catálogo** pelas palavras-chave. Tudo vem da API oficial (`client_credentials`), e o token é renovado automaticamente.
-- Calcula o desconto (preço atual × preço original), aplica os filtros (desconto mínimo, faixa de preço, palavras bloqueadas) e não repete o mesmo produto dentro do prazo configurado.
-- **Modo automático:** as melhores ofertas (maior desconto) entram na fila e são publicadas respeitando o intervalo entre posts. **Modo manual:** as ofertas ficam em **Ofertas → Aguardando**, e você escolhe quais postar.
-- A Secret Key fica **criptografada** no banco e nunca é exibida de volta.
+- A cada *N* minutos (dentro do horário ativo do bot), ele busca nas **lojas ligadas naquele bot**: no Mercado Livre, os mais vendidos das categorias e/ou a busca por palavras-chave; na Shopee, a `productOfferV2` (API GraphQL assinada com SHA256) por palavra-chave/categoria. Calcula o desconto, aplica os filtros **daquele bot** e não repete o mesmo produto dentro do prazo.
+- O produto é guardado uma vez (`promo_offers`); o que **cada bot** faz com ele (aguardando, fila, publicado, WhatsApp) fica em `offer_posts`. O mesmo produto pode sair em bots diferentes.
+- **Automático:** as melhores (maior desconto) entram na fila do bot e saem respeitando o intervalo entre posts, em **todos os destinos do Telegram** do bot. **Manual:** ficam em **Ofertas → Aguardando** para você aprovar.
+- **Pelo celular:** cole o link do Mercado Livre **ou da Shopee** (página do produto ou o seu link curto `s.shopee.com.br`) na conversa com o bot de ofertas (pode escrever `chamada: ...` e `cupom: ...` nas linhas de baixo). Ele responde com a prévia e os botões **Publicar (Telegram + WhatsApp)**, **Só no Telegram**, **Só no WhatsApp**, **Descartar**.
+- **Alertas:** cada bot avisa os administradores pelo próprio Telegram (WhatsApp desconectado, falha na busca, canais sem token). Abra cada bot e envie `/start` para recebê-los.
+
+### Modelo do post
+Cada bot tem o seu modelo (aba **Modelo do post**), usado no Telegram **e** no WhatsApp. O padrão:
+
+```
+🆘 *PRECIN NA 43" DA PHILCO*
+
+Smart TV Philco 43" Roku Tv Hdr10
+
+Por R$1.095 pix 👑
+⚠️ cupom: *DIADATECH*
+
+Link: https://meli.la/33hYTSb
+```
+
+- Marcadores: `{chamada}` `{titulo}` `{preco}` `{de}` `{desconto}` `{cupom}` `{link}` `{frete}` `{rodape}` `{loja}` (Mercado Livre / Shopee).
+- Formatação no padrão do WhatsApp: `*negrito*`, `_itálico_`, `~riscado~`. No Telegram vira HTML automaticamente.
+- Linha com marcador vazio some (sem cupom → a linha do cupom não aparece). Sem chamada na oferta, usa a **chamada padrão** do bot.
+- Na Shopee a API não informa o preço "de": ele é calculado a partir do percentual de desconto.
 
 ### Links de afiliado
-O Mercado Livre **não oferece API oficial** para gerar links de afiliado. Para ganhar comissão, gere o link no **Linkbuilder** do Programa de Afiliados (<https://www.mercadolivre.com.br/afiliados/linkbuilder>), cole no campo da oferta em **Ofertas** e clique em **Postar no canal**. Sem link de afiliado, o botão leva para a página normal do produto.
+**Shopee:** automático (vem da API). **Mercado Livre:** a loja **não oferece API** para gerar link de afiliado. Gere no **Linkbuilder** (<https://www.mercadolivre.com.br/afiliados/linkbuilder>) e cole na oferta (Painel → Ofertas), ou cole o link `meli.la` na conversa com o bot de ofertas. Link, chamada e cupom são da oferta (mesma conta de afiliado para todos os bots).
 
-### Limitações conhecidas
-- A disponibilidade dos endpoints depende da política do Mercado Livre para a sua aplicação. Se algum passo do **Testar conexão** falhar, a mensagem mostra o HTTP e o motivo retornado pela API.
-- Preços mudam a todo momento: o post mostra o preço do momento da coleta.
+### WhatsApp (um número por bot)
+Serviço `whatsapp` do compose (**Evolution API** v2.3.7, open source), que conecta cada número via QR Code como o WhatsApp Web. Cada bot de ofertas usa a instância `ofertas<ID>`.
 
-## 17. Envio das ofertas para grupos do WhatsApp
+> ⚠️ Não é a API oficial da Meta. Use **um chip dedicado por bot** e envie apenas para grupos que você administra. Se um número for bloqueado, os outros bots continuam.
 
-As ofertas do bot de promoções também podem ir para **grupos do WhatsApp**, pelo serviço `whatsapp` do compose (**Evolution API** v2.3.7, open source). Ele conecta um número via QR Code, como o WhatsApp Web.
+- **Ritmo por número:** aquecimento nos primeiros dias, depois X ofertas a cada N horas, teto diário, pausa entre grupos, horário ativo e expiração de ofertas paradas na fila. O envio de um bot não consome o limite de outro.
+- Envio somente para grupos (`@g.us`), nunca para contatos. O serviço não publica porta: só o backend e o `offers_bot` acessam, com a chave `EVOLUTION_API_KEY`.
 
-> ⚠️ Não é a API oficial da Meta. Use um **número dedicado** (não o pessoal) e envie apenas para grupos que você administra. Envios em excesso podem levar o WhatsApp a bloquear o número.
-
-### Como ativar
-1. Painel → **WhatsApp** → **Gerar QR Code** → no celular do número dedicado: *Configurações → Aparelhos conectados → Conectar um aparelho*.
-2. Depois de conectado, marque os **grupos** que vão receber as ofertas → **Salvar grupos**.
-3. Revise os **limites anti-spam** e clique em **Ativar envios**. Para conferir, use **Enviar teste**.
-
-### Como funciona
-- Toda oferta que entra na fila do canal do Telegram entra também na fila do WhatsApp. Em **Ofertas** também há o botão **Enviar no WhatsApp** para mandar uma oferta específica.
-- O bot envia foto + texto (preço "de/por", desconto, frete e link de afiliado) para cada grupo, com pausa entre os grupos.
-- **Limites aplicados:** intervalo mínimo entre ofertas (mín. 5 min), máximo por hora (até 10) e por dia (até 60), horário ativo, e expiração das ofertas paradas na fila. Envio somente para grupos (`@g.us`), nunca para contatos individuais.
-- O serviço não publica nenhuma porta: só backend e bot acessam, pela rede interna, com a chave `EVOLUTION_API_KEY`. A sessão fica no volume `telegram_whatsapp_instances`.
-
-### Comandos úteis
 ```bash
+make logs-offers                      # logs do módulo de ofertas
 docker compose logs -f whatsapp       # logs do gateway do WhatsApp
-docker compose restart whatsapp       # reiniciar o gateway (a sessão é mantida)
 ```
+
+## 17. Módulo de vendas: cupons, recuperação de PIX, upsell e origem
+
+Vale só para o **bot de vendas** (seus produtos, pagos pelo gateway). Os bots de ofertas não passam por aqui.
+
+**Gateway de pagamento:** escolhido por `PAYMENT_GATEWAY` no `.env` (hoje: `mercadopago`). O dinheiro cai direto na sua conta do gateway. Para usar outro gateway, ele é adicionado em `sales/payments.py` (classe com `create_pix_payment`/`get_payment`, registro em `GATEWAYS` e rota de webhook) — o resto do funil (pedidos, liberação, cupons) não muda.
+
+
+- **Cupons** (Painel → Cupons): desconto de 1% a 90%, para todos os planos ou um só, com limite de usos (contam só pedidos pagos) e validade. O cliente usa com `/cupom CODIGO`, digitando o código na conversa, ou abrindo `t.me/<bot>?start=origem__CODIGO`. O valor com desconto é o valor do pedido — a liberação continua conferindo o valor pago.
+- **Recuperação de PIX:** `RECOVERY_DELAY_MINUTES` (padrão 10) depois de um PIX expirar sem pagamento, o bot manda uma única mensagem com o botão **Gerar novo PIX**. Não manda se a pessoa já comprou/gerou outro PIX, está bloqueada, ou recebeu outra recuperação nas últimas 24 h. `0` desliga.
+- **Renovar em 1 toque:** o lembrete de vencimento e o aviso de expiração têm o botão **Renovar agora (PIX)**.
+- **Upsell:** depois de entregar o conteúdo, o bot oferece **uma vez** o plano mais barato entre os que custam mais que o comprado (prefere assinatura quando a compra foi um pack) e que a pessoa ainda não tem. `UPSELL_ENABLED=false` desliga.
+- **Funil por origem** (Painel → Funil por origem): por origem do `/start`, quantos abriram o bot, geraram PIX e compraram, conversão, faturamento e ticket médio. Use um link por canal/vídeo: `t.me/<bot>?start=tiktok-v12` ou `https://seudominio/?start=tiktok-v12`.
+
+## 18. Operação
+
+- **Healthchecks:** o bot de vendas e o módulo de ofertas gravam, cada um, um sinal de vida por minuto; se um deles parar por mais de 3 min, o healthcheck encerra só aquele processo e o Docker o reinicia sozinho (`manage.py bot-health sales|offers`).
+- **Aviso de erros:** os administradores vinculados recebem no Telegram os erros do sistema, agrupados (ex.: `×3`) e sem repetição por 30 min.
+- **Retenção (LGPD):** a cada 6 h o bot apaga `access_logs` com mais de `LOG_RETENTION_DAYS` dias e `webhook_events` com mais de `WEBHOOK_RETENTION_DAYS`. Para rodar na hora: `python manage.py purge`.
+

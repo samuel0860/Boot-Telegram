@@ -7,14 +7,14 @@
 
 {# ---------------- Serviços ---------------- #}
 <div class="service-row">
-  <div class="service"><span class="status-dot {{ 'on' if bot_online }}"></span>
-    <div><b>Bot do Telegram</b><small>{{ 'online' if bot_online else 'offline ou iniciando' }}</small></div></div>
+  <div class="service"><span class="status-dot {{ 'on' if sales_online }}"></span>
+    <div><b>Bot de vendas</b><small>{{ 'online' if sales_online else 'offline ou iniciando' }}</small></div></div>
   <div class="service"><span class="status-dot {{ 'on' if payments_configured }}"></span>
-    <div><b>Pagamentos PIX</b><small>{{ 'configurado' if payments_configured else 'não configurado' }}</small></div></div>
-  <a class="service" href="/admin/promo"><span class="status-dot {{ 'on' if promo_enabled }}"></span>
-    <div><b>Bot de promoções</b><small>{{ 'ligado' if promo_enabled else 'desligado' }}</small></div></a>
-  <a class="service" href="/admin/whatsapp"><span class="status-dot {{ 'on' if wa_enabled }}"></span>
-    <div><b>WhatsApp</b><small>{{ 'enviando' if wa_enabled else 'desligado' }}</small></div></a>
+    <div><b>Pagamentos ({{ gateway }})</b><small>{{ 'configurado' if payments_configured else 'não configurado' }}</small></div></div>
+  <a class="service" href="/admin/offers/bots"><span class="status-dot {{ 'on' if offers_online }}"></span>
+    <div><b>Módulo de ofertas</b><small>{{ 'online' if offers_online else 'offline ou iniciando' }}</small></div></a>
+  <a class="service" href="/admin/offers/bots"><span class="status-dot {{ 'on' if offers.active }}"></span>
+    <div><b>Bots de ofertas</b><small>{{ offers.active }} de {{ offers.bots }} ligado{{ 's' if offers.active != 1 }}</small></div></a>
 </div>
 
 {# ---------------- Primeiros passos ---------------- #}
@@ -28,10 +28,10 @@
     </div>
   </div>
   <ul class="setup-list">
-    {% for done, title, desc, link, link_text, optional in setup %}
+    {% for done, title, desc, link, link_text, optional, module in setup %}
     <li class="{{ 'done' if done }}">
       <span class="setup-check">{{ icon('check') if done else '' }}</span>
-      <div class="setup-text"><b>{{ title }}</b>{% if optional %} <span class="badge badge-muted">opcional</span>{% endif %}
+      <div class="setup-text"><b>{{ title }}</b><span class="module-tag">{{ module }}</span>{% if optional %} <span class="badge badge-muted">opcional</span>{% endif %}
         <small>{{ desc }}</small></div>
       {% if not done and link %}<a class="btn btn-sm btn-secondary" href="{{ link }}">{{ link_text }}</a>
       {% elif not done %}<span class="hint">veja o GUIA.md</span>{% endif %}
@@ -44,7 +44,7 @@
 {% if not webhook_configured and payments_configured %}<div class="alert alert-warn">{{ icon('alert') }}<span><b>Webhook sem assinatura:</b> configure <code>MP_WEBHOOK_SECRET</code>. Até lá, pagamentos são confirmados pela verificação periódica.</span></div>{% endif %}
 
 {# ---------------- Números ---------------- #}
-<h2 class="section-title">Vendas</h2>
+<h2 class="section-title">Vendas · bot próprio</h2>
 <div class="kpis">
   <div class="kpi"><div class="kpi-top"><span class="kpi-label">Receita (30 dias)</span><span class="kpi-icon ok">{{ icon('trending') }}</span></div>
     <span class="kpi-value">{{ stats.revenue_30d|brl }}</span><span class="kpi-sub">{{ stats.paid_30d }} venda{{ 's' if stats.paid_30d != 1 }}</span></div>
@@ -54,14 +54,14 @@
     <span class="kpi-value">{{ stats.active_subs }}</span><span class="kpi-sub">{{ stats.pending_orders }} pedido{{ 's' if stats.pending_orders != 1 }} aguardando PIX</span></div>
 </div>
 
-<h2 class="section-title">Promoções</h2>
+<h2 class="section-title">Ofertas · afiliados</h2>
 <div class="kpis">
   <div class="kpi"><div class="kpi-top"><span class="kpi-label">Publicadas (24h)</span><span class="kpi-icon info">{{ icon('megaphone') }}</span></div>
-    <span class="kpi-value">{{ promo_stats.posted_24h }}</span><span class="kpi-sub">no canal do Telegram</span></div>
+    <span class="kpi-value">{{ offers.posted_24h }}</span><span class="kpi-sub">Telegram · {{ offers.wa_24h }} no WhatsApp</span></div>
   <div class="kpi"><div class="kpi-top"><span class="kpi-label">Aguardando aprovação</span><span class="kpi-icon warn">{{ icon('clock') }}</span></div>
-    <span class="kpi-value">{{ promo_stats.new }}</span><span class="kpi-sub"><a href="/admin/promo/offers">ver ofertas</a></span></div>
-  <div class="kpi {{ 'alert' if stats.undelivered or stats.failed_webhooks or promo_stats.failed }}"><div class="kpi-top"><span class="kpi-label">Precisa de atenção</span><span class="kpi-icon {{ 'danger' if stats.undelivered or stats.failed_webhooks or promo_stats.failed }}">{{ icon('alert') }}</span></div>
-    <span class="kpi-value">{{ stats.undelivered + stats.failed_webhooks + promo_stats.failed }}</span>
+    <span class="kpi-value">{{ offers.waiting }}</span><span class="kpi-sub"><a href="/admin/offers">ver ofertas</a></span></div>
+  <div class="kpi {{ 'alert' if stats.undelivered or stats.failed_webhooks or offers.failed }}"><div class="kpi-top"><span class="kpi-label">Precisa de atenção</span><span class="kpi-icon {{ 'danger' if stats.undelivered or stats.failed_webhooks or offers.failed }}">{{ icon('alert') }}</span></div>
+    <span class="kpi-value">{{ stats.undelivered + stats.failed_webhooks + offers.failed }}</span>
     <span class="kpi-sub">entregas, pagamentos e posts com erro</span></div>
 </div>
 

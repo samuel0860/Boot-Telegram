@@ -1,0 +1,46 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon with context %}
+{% from "admin/_macros.html" import page_header with context %}
+{% block title %}Funil por origem{% endblock %}
+{% block content %}
+{% call page_header('Funil por origem', 'De onde vêm as pessoas que abrem o bot, quantas geram PIX e quantas compram.') %}{% endcall %}
+
+<div class="segmented">
+  {% for key, label in periods.items() %}<a href="?period={{ key }}" class="{{ 'on' if period == key }}">{{ label }}</a>{% endfor %}
+</div>
+
+<div class="table-wrap"><table>
+  <thead><tr>
+    <th>Origem</th><th class="text-right">Abriram o bot</th><th class="text-right">Geraram PIX</th>
+    <th class="text-right">Compraram</th><th class="text-right">Conversão</th><th class="text-right">Pedidos pagos</th>
+    <th class="text-right">Faturamento</th><th class="text-right">Ticket médio</th>
+  </tr></thead>
+  <tbody>
+  {% for r in rows + [total] %}
+    <tr class="{{ 'row-total' if loop.last }}">
+      <td>{% if loop.last %}<b>Total</b>{% else %}<code>{{ r.source }}</code>{% endif %}</td>
+      <td class="text-right">{{ r.users }}</td>
+      <td class="text-right">{{ r.checkout_users }} <small class="hint">{{ '%.0f'|format(r.checkout_rate) }}%</small></td>
+      <td class="text-right">{{ r.buyers }}</td>
+      <td class="text-right"><b>{{ '%.1f'|format(r.conversion) }}%</b></td>
+      <td class="text-right">{{ r.orders_paid }}</td>
+      <td class="text-right"><b>{{ r.revenue|brl }}</b></td>
+      <td class="text-right">{{ r.ticket|brl }}</td>
+    </tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+{% if not rows %}<p class="hint mt-2">Ninguém abriu o bot neste período.</p>{% endif %}
+
+<section class="card mt-3">
+  <h2 class="mb-3">Como medir cada canal</h2>
+  <p class="hint">Use um link diferente em cada lugar. O que vem depois de <code>start=</code> vira a origem (letras, números, - e _):</p>
+  <ul class="today-list mt-2">
+    <li><span>Bio do TikTok</span><code>t.me/{{ bot_username or 'SeuBot' }}?start=tiktok-bio</code></li>
+    <li><span>Vídeo específico</span><code>t.me/{{ bot_username or 'SeuBot' }}?start=tiktok-v12</code></li>
+    <li><span>Instagram</span><code>t.me/{{ bot_username or 'SeuBot' }}?start=insta</code></li>
+    <li><span>Com cupom</span><code>t.me/{{ bot_username or 'SeuBot' }}?start=tiktok__PROMO10</code></li>
+  </ul>
+  <p class="hint mt-2">{{ icon('info') }} A origem é a do <b>primeiro</b> acesso da pessoa — quem volta por outro link continua contando para a origem original.</p>
+</section>
+{% endblock %}

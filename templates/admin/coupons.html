@@ -1,0 +1,57 @@
+{% extends "admin/base.html" %}
+{% from "admin/_icons.html" import icon with context %}
+{% from "admin/_macros.html" import csrf, page_header with context %}
+{% block title %}Cupons{% endblock %}
+{% block content %}
+{% call page_header('Cupons de desconto', 'Descontos para os planos vendidos no bot. Só pedidos pagos contam como uso.') %}{% endcall %}
+
+<div class="table-wrap"><table>
+  <thead><tr><th>Código</th><th>Desconto</th><th>Plano</th><th>Usos</th><th>Faturado</th><th>Validade</th><th>Status</th><th></th></tr></thead>
+  <tbody>
+  {% for c in coupons %}
+    <tr class="{{ 'muted' if not c.is_active }}">
+      <td><code>{{ c.code }}</code></td>
+      <td><b>{{ c.percent_off }}%</b></td>
+      <td>{{ c.plan.name if c.plan else 'Todos' }}</td>
+      <td>{{ uses.get(c.id, 0) }}{% if c.max_uses %} / {{ c.max_uses }}{% endif %}</td>
+      <td>{{ revenue.get(c.id, 0)|brl }}</td>
+      <td>{{ c.valid_until|dt if c.valid_until else 'Sem prazo' }}</td>
+      <td>{% if c.is_active %}<span class="badge badge-ok"><span class="dot"></span>Ativo</span>{% else %}<span class="badge badge-muted"><span class="dot"></span>Inativo</span>{% endif %}</td>
+      <td>{% if admin.is_superuser %}<form method="post" action="/admin/coupons/{{ c.id }}/toggle" class="inline">{{ csrf() }}
+        <button class="btn btn-sm {{ 'btn-danger' if c.is_active else 'btn-secondary' }}">{{ 'Desativar' if c.is_active else 'Ativar' }}</button></form>{% endif %}</td>
+    </tr>
+  {% else %}
+    <tr><td colspan="8" class="empty">Nenhum cupom criado ainda.</td></tr>
+  {% endfor %}
+  </tbody>
+</table></div>
+
+{% if admin.is_superuser %}
+<section class="card mt-3">
+  <div class="card-header">
+    <div class="card-icon">{{ icon('plus') }}</div>
+    <div><h2>Novo cupom</h2><p>O cliente usa enviando <code>/cupom CODIGO</code> ao bot, digitando o código, ou pelo link com cupom.</p></div>
+  </div>
+  <form method="post" action="/admin/coupons/create" class="form">{{ csrf() }}
+    <div class="grid4">
+      <label>Código <small>letras, números, - ou _</small>
+        <input name="code" required maxlength="32" pattern="[A-Za-z0-9_\-]{3,32}" placeholder="TIKTOK10" style="text-transform:uppercase"></label>
+      <label>Desconto <small>% (1 a 90)</small><input name="percent_off" required inputmode="numeric" maxlength="2" placeholder="10"></label>
+      <label>Plano <small>vazio = todos</small>
+        <select name="plan_id"><option value="">Todos os planos</option>
+          {% for p in plans %}<option value="{{ p.id }}">{{ p.name }} — {{ p.price|brl }}{{ '' if p.is_active else ' (inativo)' }}</option>{% endfor %}
+        </select></label>
+      <label>Limite de usos <small>vazio = ilimitado</small><input name="max_uses" inputmode="numeric" maxlength="7"></label>
+      <label>Válido até <small>vazio = sem prazo</small><input name="valid_until" type="date"></label>
+    </div>
+    <button class="btn">{{ icon('save') }}Criar cupom</button>
+  </form>
+</section>
+{% endif %}
+
+<section class="card mt-3">
+  <h2 class="mb-3">Link com cupom já aplicado</h2>
+  <p class="hint">Junte a origem e o cupom com dois sublinhados. Ideal para a bio ou um vídeo específico do TikTok — o funil mostra de onde veio cada venda.</p>
+  <div class="code-box code-box-url">https://t.me/{{ bot_username or 'SeuBot' }}?start={{ start_param }}__CODIGO</div>
+</section>
+{% endblock %}
