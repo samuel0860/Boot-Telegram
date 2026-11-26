@@ -41,7 +41,7 @@ def test_caption_whatsapp_format():
                    headline="QUEIMA *TOTAL*", coupon="FONE10")
     c = whatsapp_caption(o, parse({}))
     assert c.startswith("🆘 *QUEIMA TOTAL*")      # marcação removida dos valores
-    assert "Fone Top X" in c and "Por R$79,90 pix 👑" in c
+    assert "Fone Top X" in c and "Por: R$79,90 pix 👑" in c
     assert "⚠️ cupom: *FONE10*" in c and "Link: https://meli.la/abc" in c
 
 

@@ -151,7 +151,7 @@ def test_bot_collects_from_amazon_with_affiliate_link():
         offers = {o.external_id: o for o in s.scalars(select(PromoOffer)).all()}
     assert set(offers) == {"B0ECHO0001"} and offers["B0ECHO0001"].platform == "amazon"
     job = posting.claim_next_post(bot)
-    assert f"tag={TAG}" in job.link and "Por R$299 pix" in job.caption
+    assert f"tag={TAG}" in job.link and "Por: R$299 pix" in job.caption
 
 
 def test_missing_amazon_credentials():

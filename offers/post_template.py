@@ -2,7 +2,8 @@
 
 O modelo é editado no painel (Ofertas → Bots de ofertas → bot → Modelo do post) e usa:
 
-  Marcadores      {chamada} {titulo} {preco} {de} {desconto} {cupom} {link} {frete} {rodape} {loja}
+  Marcadores      {chamada} {titulo} {frase} {precos} {preco} {de} {desconto} {cupom} {link} {frete}
+                  {rodape} {loja}
   Formatação      *negrito*   _itálico_   ~riscado~   (padrão do WhatsApp)
 
 Regras:
@@ -18,12 +19,15 @@ from dataclasses import dataclass, replace
 from decimal import Decimal
 from html import escape
 
+from offers.phrases import phrase_for
+
 DEFAULT_TEMPLATE = (
     "🆘 *{chamada}*\n"
     "\n"
     "{titulo}\n"
+    "_{frase}_\n"
     "\n"
-    "Por {preco} pix 👑\n"
+    "{precos} pix 👑\n"
     "⚠️ cupom: *{cupom}*\n"
     "\n"
     "Link: {link}"
@@ -34,6 +38,8 @@ DEFAULT_HEADLINE = ""
 PLACEHOLDERS: dict[str, str] = {
     "chamada": "Frase de impacto: automática (produto + desconto), a fixa do bot ou a definida na oferta",
     "titulo": "Nome do produto",
+    "frase": "Frase curta automática conforme o tipo de produto (ex.: “Esse salva a sua vida quando você mais precisa.”)",
+    "precos": "“De: R$229 | Por: R$101” quando há preço antigo; senão “Por: R$101”",
     "preco": "Preço atual (ex.: R$1.095)",
     "de": "Preço antigo, se houver (ex.: R$1.499)",
     "desconto": "Percentual de desconto, se houver (ex.: 27)",
@@ -126,9 +132,12 @@ def auto_headline(data: PostData) -> str:
 
 def _values(data: PostData, default_headline: str, footer: str) -> dict[str, str]:
     old = data.original_price if data.original_price and data.original_price > data.price else None
+    precos = f"De: {short_brl(old)} | Por: {short_brl(data.price)}" if old else f"Por: {short_brl(data.price)}"
     return {
         "chamada": (data.headline or default_headline or "").strip() or auto_headline(data),
         "titulo": data.title.strip()[:200],
+        "frase": phrase_for(data.title, data.discount_pct),
+        "precos": precos,
         "preco": short_brl(data.price),
         "de": short_brl(old) if old else "",
         "desconto": str(data.discount_pct) if data.discount_pct else "",

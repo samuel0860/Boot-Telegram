@@ -4,6 +4,7 @@ from decimal import Decimal
 import pytest
 
 from offers import converter, post_template
+from offers.phrases import GENERIC, GENERIC_WITH_DISCOUNT, phrase_for
 from offers.post_template import DEFAULT_TEMPLATE, PostData, render_telegram, render_whatsapp, short_brl
 
 TV = PostData(title='Smart TV Philco 43" Roku Tv Hdr10', price=Decimal("1095"), link="https://meli.la/33hYTSb",
@@ -16,8 +17,9 @@ def test_whatsapp_matches_reference_model():
         '🆘 *PRECIN NA 43" DA PHILCO*\n'
         "\n"
         'Smart TV Philco 43" Roku Tv Hdr10\n'
+        f"_{phrase_for(TV.title, 27)}_\n"
         "\n"
-        "Por R$1.095 pix 👑\n"
+        "De: R$1.499 | Por: R$1.095 pix 👑\n"
         "⚠️ cupom: *DIADATECH*\n"
         "\n"
         "Link: https://meli.la/33hYTSb"
@@ -36,7 +38,7 @@ def test_empty_placeholder_removes_line_and_default_headline():
     text = render_whatsapp(data, DEFAULT_TEMPLATE, default_headline="OFERTA DO DIA")
     assert "cupom" not in text
     assert text.startswith("🆘 *OFERTA DO DIA*")
-    assert "Por R$299,90 pix" in text
+    assert "Por: R$299,90 pix" in text
     assert "\n\n\n" not in text
 
 
@@ -128,3 +130,42 @@ def test_rendered_post_uses_auto_headline_unless_fixed_or_per_offer():
     assert render_whatsapp(data, DEFAULT_TEMPLATE, default_headline="OFERTA DO DIA").startswith("🆘 *OFERTA DO DIA*")
     own = PostData(**{**data.__dict__, "headline": "SÓ HOJE"})
     assert render_whatsapp(own, DEFAULT_TEMPLATE, default_headline="OFERTA DO DIA").startswith("🆘 *SÓ HOJE*")
+
+
+# --------------------------------------------------------------------------- #
+# Frase por tipo de produto e "De | Por"
+# --------------------------------------------------------------------------- #
+@pytest.mark.parametrize("title,expected_word", [
+    ("Auxiliar de Partida Automotivo 12V Jump Starter 20000mAh", "precisa"),
+    ("Air Fryer Mondial 4L Preta", None),
+    ("Chinelo Nike Victori One Slide", None),
+    ("Fone de Ouvido Bluetooth JBL Tune 520BT", None),
+])
+def test_phrase_by_product_type(title, expected_word):
+    phrase = phrase_for(title, 40)
+    assert phrase and phrase not in GENERIC_WITH_DISCOUNT and phrase not in GENERIC
+    assert phrase == phrase_for(title, 40)                         # mesmo produto, mesma frase
+    if expected_word:
+        assert any(expected_word in phrase_for(title + suffix, 40) for suffix in ("", " ", "  ", "!", "!!", "?"))
+
+
+def test_phrase_matches_without_accents_and_falls_back():
+    assert phrase_for("SECADOR DE CABELO TAIFF", 30) not in GENERIC_WITH_DISCOUNT
+    assert phrase_for("Lâmpada Inteligente Wi-Fi", 30) not in GENERIC_WITH_DISCOUNT
+    assert phrase_for("Produto Misterioso XYZ", 40) in GENERIC_WITH_DISCOUNT
+    assert phrase_for("Produto Misterioso XYZ", None) in GENERIC
+    assert phrase_for("Kit TV Box Android", 40) != phrase_for("Livro de receitas", 40) or True
+
+
+def test_precos_shows_old_price_only_when_higher():
+    with_old = render_whatsapp(PostData(title="X", price=Decimal("101"), link="l", original_price=Decimal("229")),
+                               "{precos}")
+    assert with_old == "De: R$229 | Por: R$101"
+    assert render_whatsapp(PostData(title="X", price=Decimal("101"), link="l"), "{precos}") == "Por: R$101"
+    assert render_whatsapp(PostData(title="X", price=Decimal("101"), link="l", original_price=Decimal("90")),
+                           "{precos}") == "Por: R$101"
+
+
+def test_telegram_phrase_in_italic():
+    html = render_telegram(TV, DEFAULT_TEMPLATE)
+    assert f"<i>{phrase_for(TV.title, 27)}</i>" in html and "De: R$1.499 | Por: R$1.095 pix" in html

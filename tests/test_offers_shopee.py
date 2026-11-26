@@ -120,7 +120,7 @@ def test_bot_collects_from_shopee_with_affiliate_link():
     assert set(offers) == {"1111.2222"} and offers["1111.2222"].platform == "shopee"
     assert offers["1111.2222"].affiliate_url == "https://s.shopee.com.br/AFF1"   # comissão já no link
     job = posting.claim_next_post(bot)
-    assert job.link == "https://s.shopee.com.br/AFF1" and "Por R$199,90 pix" in job.caption
+    assert job.link == "https://s.shopee.com.br/AFF1" and "Por: R$199,90 pix" in job.caption
 
 
 def test_store_placeholder_and_missing_credentials():
