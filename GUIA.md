@@ -50,6 +50,18 @@ Usuário e senha do painel: veja o `ACESSOS.md`. Para trocar a senha: **Minha co
 
 > Com o servidor definitivo e um domínio, os endereços mudam para `https://seudominio.com.br/admin/`.
 
+### Instalar o painel como app (celular e computador)
+
+O painel pode ser instalado como um aplicativo: ícone na tela inicial, abre em tela cheia, sem a barra do navegador.
+
+- **Android (Chrome):** abra o painel e toque em **Instalar app** no topo (ou no menu ⋮ → **Instalar app** / **Adicionar à tela inicial**).
+- **iPhone (Safari):** abra o painel, toque em **Compartilhar** (o quadrado com a seta) → **Adicionar à Tela de Início**. O painel mostra essa dica uma vez.
+- **Computador (Chrome/Edge):** clique em **Instalar app** no topo, ou no ícone de instalar na barra de endereço.
+
+Segurando o ícone do app no Android, aparecem atalhos para **Central dos bots**, **Ofertas encontradas** e **Pedidos**. O app usa o mesmo login do painel e se atualiza sozinho quando o sistema é atualizado.
+
+> ⚠️ O navegador só instala como app quando o painel é aberto por **https** (com domínio). Pelo endereço `http://IP:8765` o Android só cria um atalho comum, e o iPhone abre como site. Configure o domínio no `.env` (`DOMAIN=`) e o Caddy cuida do certificado.
+
 ## 3. Primeiros passos (checklist)
 
 O **Dashboard** mostra o checklist "Primeiros passos" com o que ainda falta (cada item diz se é de vendas ou de ofertas):

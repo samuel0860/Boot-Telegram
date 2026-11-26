@@ -877,3 +877,20 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 600px) { .chart .axis-label { font-size: 26px; } }
 .offer-edit .offer-fields label { position: relative; }
 .offer-edit .offer-fields label > .help-tip { position: absolute; top: 0; right: 0; }
+
+/* ===================================================================== */
+/* App instalável (PWA)                                                  */
+/* ===================================================================== */
+.install-btn[hidden], .ios-install[hidden] { display: none !important; }
+.install-btn { margin-left: auto; }
+.install-btn + .topbar-link { margin-left: 12px; }
+.ios-install { align-items: center; }
+.ios-install .icon-btn { margin-left: auto; flex: 0 0 auto; }
+/* Dentro do app instalado: sem o link para o site e respeitando o recorte da tela do iPhone */
+.is-app .topbar-link { display: none; }
+.is-app .sidebar { padding-bottom: env(safe-area-inset-bottom); }
+.offline { min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 24px; text-align: center; max-width: 420px; margin: 0 auto; }
+.offline img { border-radius: 18px; }
+.offline h1 { font-size: 20px; }
+.offline p { color: var(--text-2); font-size: 14px; line-height: 1.5; }
+@media (max-width: 600px) { .install-btn span { display: none; } }

@@ -21,6 +21,13 @@
   <meta name="robots" content="noindex, nofollow">
   <title>{% block title %}Painel{% endblock %} · Telegram Vendas</title>
   <link rel="icon" href="/static/images/favicon.svg" type="image/svg+xml">
+  <link rel="manifest" href="/admin/manifest.webmanifest">
+  <meta name="theme-color" content="#0b0e14">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Painel Bots">
+  <link rel="apple-touch-icon" href="/static/pwa/apple-touch-icon.png">
   <link rel="stylesheet" href="/static/css/admin.css">
   {% block head %}{% endblock %}
 </head>
@@ -114,9 +121,11 @@
         <span class="module-pill mod-sales">{{ icon('cart') }}Bot de vendas</span>
       {%- endif %}
       <span class="topbar-title">{{ self.title() }}</span>
+      <button type="button" class="btn btn-sm install-btn" id="install-app" hidden>{{ icon('download') }}<span>Instalar app</span></button>
       <a class="topbar-link" href="/" target="_blank" rel="noopener">{{ icon('external') }}<span>Ver página inicial</span></a>
     </header>
     <main class="content">
+      <div class="alert alert-info ios-install" id="ios-install" hidden>{{ icon('download') }}<span><b>Instale o painel como app:</b> no Safari, toque em <b>Compartilhar</b> (o quadrado com a seta) e depois em <b>Adicionar à Tela de Início</b>.</span><button type="button" class="icon-btn" id="ios-install-close" aria-label="Fechar">{{ icon('x') }}</button></div>
       {% for f in flashes %}
         <div class="alert alert-{{ f.kind }}">{{ icon('check' if f.kind == 'ok' else 'alert') }}<span>{{ f.message }}</span></div>
       {% endfor %}

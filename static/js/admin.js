@@ -64,3 +64,57 @@ document.addEventListener("change", function (e) {
   var el = e.target;
   if (el && el.classList && el.classList.contains("auto-submit") && el.form) el.form.submit();
 });
+
+// ---------------------------------------------------------------------------
+// App instalável (PWA)
+// ---------------------------------------------------------------------------
+(function () {
+  "use strict";
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", function () {
+      navigator.serviceWorker.register("/admin/sw.js", { scope: "/admin/" }).catch(function () {});
+    });
+  }
+
+  var standalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  if (standalone) document.documentElement.classList.add("is-app");
+
+  // Android / Chrome / Edge: botão "Instalar app"
+  var installBtn = document.getElementById("install-app");
+  var deferred = null;
+  window.addEventListener("beforeinstallprompt", function (e) {
+    e.preventDefault();
+    deferred = e;
+    if (installBtn) installBtn.hidden = false;
+  });
+  if (installBtn) {
+    installBtn.addEventListener("click", function () {
+      if (!deferred) return;
+      deferred.prompt();
+      deferred.userChoice.finally(function () {
+        deferred = null;
+        installBtn.hidden = true;
+      });
+    });
+  }
+  window.addEventListener("appinstalled", function () {
+    if (installBtn) installBtn.hidden = true;
+  });
+
+  // iPhone/iPad (Safari não tem botão de instalar): mostra a dica uma vez
+  var ios = /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  var tip = document.getElementById("ios-install");
+  var seen = false;
+  try { seen = localStorage.getItem("ios-install-tip") === "1"; } catch (err) { /* sem armazenamento */ }
+  if (tip && ios && !standalone && !seen) {
+    tip.hidden = false;
+    var close = document.getElementById("ios-install-close");
+    if (close) {
+      close.addEventListener("click", function () {
+        tip.hidden = true;
+        try { localStorage.setItem("ios-install-tip", "1"); } catch (err) { /* ignora */ }
+      });
+    }
+  }
+})();
