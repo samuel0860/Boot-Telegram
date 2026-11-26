@@ -65,7 +65,7 @@ O sistema tem **dois módulos independentes**, cada um com processo, bot(s) e co
 |---|---|
 | `postgres` | Banco (container `telegram_postgres`), volume persistente, healthcheck |
 | `migrate` | Executa `alembic upgrade head` e encerra (os demais só iniciam depois dele) |
-| `backend` | FastAPI: página inicial, `/webhooks/mercadopago`, painel `/admin`, `/health` |
+| `backend` | FastAPI: painel `/admin` (o endereço `/` abre o painel), `/webhooks/mercadopago`, `/privacidade`, `/health` |
 | `telegram_bot` | **Vendas**: atendimento, compra, entrega, expirações, controle de grupos pagos |
 | `offers_bot` | **Ofertas**: roda todos os bots de ofertas (busca, Telegram, WhatsApp) |
 | `whatsapp` | Gateway do WhatsApp (Evolution API) — uma instância (número) por bot de ofertas |

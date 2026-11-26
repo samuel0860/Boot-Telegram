@@ -32,7 +32,7 @@ O sistema tem **dois módulos separados**, cada um com seus bots e suas configur
 | **Vendas** (bot próprio, @lgr_ebac_bot) | Vende os **seus** produtos/serviços: mostra os planos, gera o PIX, libera o conteúdo depois do pagamento e controla a validade das assinaturas. O dinheiro cai direto na **sua conta** do gateway (hoje Mercado Pago). |
 | **Ofertas** (afiliados) | **Vários bots de ofertas**, cada um com o **próprio bot do Telegram** e o **próprio número de WhatsApp**. Cada um busca promoções no **Mercado Livre**, na **Shopee** e/ou na **Amazon** com os seus filtros e publica nos **seus** canais e grupos. |
 
-Também fazem parte: a **página inicial** (link da bio do TikTok, que leva ao bot de vendas) e o **painel**, onde você configura e acompanha os dois módulos.
+Também faz parte o **painel**, onde você configura e acompanha os dois módulos. O endereço principal do site abre o painel; links de campanha antigos (`/?start=tiktok-v12`) vão direto para o bot de vendas no Telegram.
 
 Tudo roda em containers Docker: `postgres` (banco), `backend` (painel e página), `telegram_bot` (vendas), `offers_bot` (ofertas), `whatsapp` e `backup`.
 
@@ -41,7 +41,7 @@ Tudo roda em containers Docker: `postgres` (banco), `backend` (painel e página)
 | O quê | Endereço |
 |---|---|
 | Painel administrativo | `http://<servidor>:8765/admin/` (hoje: http://10.10.0.111:8765/admin/) |
-| Página inicial (TikTok) | `http://<servidor>:8765/` |
+| Link de campanha (bio do TikTok) | `https://t.me/<seu_bot>?start=tiktok` (ou `https://seudominio/?start=tiktok`) |
 | Bot | https://t.me/lgr_ebac_bot |
 
 Usuário e senha do painel: veja o `ACESSOS.md`. Para trocar a senha: **Minha conta → Trocar senha**.

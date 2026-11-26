@@ -89,16 +89,13 @@ async def not_authenticated_handler(request: Request, exc: NotAuthenticated):
 START_PARAM_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 
 
-@app.get("/", response_class=HTMLResponse, include_in_schema=False)
-def landing(request: Request, start: str = ""):
-    # ?start=tiktok-v12 na URL da página é repassado ao bot (mede cada vídeo/campanha)
-    link = settings.telegram_link
+@app.get("/", include_in_schema=False)
+def home(start: str = ""):
+    """O endereço principal abre o painel. Links antigos de campanha (?start=tiktok-v12)
+    vão direto para o bot no Telegram, mantendo a origem no funil."""
     if start and START_PARAM_RE.match(start) and settings.telegram_bot_username:
-        link = f"https://t.me/{quote(settings.telegram_bot_username)}?start={start}"
-    return templates.TemplateResponse(
-        request, "index.html",
-        {"telegram_link": link, "title": settings.landing_title, "subtitle": settings.landing_subtitle},
-    )
+        return RedirectResponse(f"https://t.me/{quote(settings.telegram_bot_username)}?start={start}", status_code=302)
+    return RedirectResponse("/admin/", status_code=302)
 
 
 @app.get("/privacidade", response_class=HTMLResponse, include_in_schema=False)

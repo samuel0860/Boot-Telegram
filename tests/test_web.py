@@ -39,16 +39,12 @@ def test_signature_helper():
     assert not verify_mercadopago_signature(x_signature=None, x_request_id="req-1", data_id="123", secret=SECRET)
 
 
-def test_landing_page(client):
-    r = client.get("/")
-    assert r.status_code == 200
-    assert "Abrir no Telegram" in r.text and "Não sou um robô" not in r.text
-    assert 'href="https://t.me/TesteVendasBot?start=tiktok"' in r.text
-    assert "Content-Security-Policy" in r.headers
-    # ?start= da página é repassado ao bot; valores inválidos são ignorados
-    assert 'href="https://t.me/TesteVendasBot?start=tiktok-v12"' in client.get("/?start=tiktok-v12").text
-    assert 'start=tiktok"' in client.get("/?start=<script>").text
-
+def test_home_opens_panel_and_keeps_campaign_links(client):
+    r = client.get("/", follow_redirects=False)
+    assert r.status_code == 302 and r.headers["location"] == "/admin/"
+    r = client.get("/?start=tiktok-v12", follow_redirects=False)
+    assert r.headers["location"] == "https://t.me/TesteVendasBot?start=tiktok-v12"
+    assert client.get("/?start=<script>", follow_redirects=False).headers["location"] == "/admin/"
 
 def test_privacy_page(client):
     r = client.get("/privacidade")

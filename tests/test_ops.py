@@ -135,5 +135,5 @@ def test_funnel_page(admin_client, user):
     assert r.status_code == 200 and "tiktok" in r.text and "Total" in r.text
 
 
-def test_privacy_link_on_landing(admin_client):
-    assert 'href="/privacidade"' in admin_client.get("/").text
+def test_privacy_page(admin_client):
+    assert admin_client.get("/privacidade").status_code == 200
