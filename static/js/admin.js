@@ -28,6 +28,8 @@
   }
   if (toggle) toggle.addEventListener("click", function () { setMenu(!sidebar.classList.contains("open")); });
   if (backdrop) backdrop.addEventListener("click", function () { setMenu(false); });
+  var tabMenu = document.getElementById("tabbar-menu");
+  if (tabMenu) tabMenu.addEventListener("click", function () { setMenu(!sidebar.classList.contains("open")); });
 
   // Grupos do menu (dropdown): lembra quais o usuário deixou abertos.
   var KEY = "nav-open-groups";
@@ -78,43 +80,64 @@ document.addEventListener("change", function (e) {
 
   var standalone = window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
   if (standalone) document.documentElement.classList.add("is-app");
+  var ios = /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  var mobile = ios || /android/i.test(navigator.userAgent);
 
-  // Android / Chrome / Edge: botão "Instalar app"
-  var installBtn = document.getElementById("install-app");
+  var buttons = document.querySelectorAll("[data-install]");
+  var help = document.getElementById("install-help");
   var deferred = null;
+  function show(on) { buttons.forEach(function (b) { b.hidden = !on; }); }
+
+  // No iPhone o Safari não tem botão de instalar: o nosso botão abre o passo a passo.
+  // Em celulares Android sem o aviso automático (ex.: sem https), também mostra o passo a passo.
+  if (!standalone && mobile) show(true);
+  if (help) help.classList.add(ios ? "is-ios" : "is-other");
+
   window.addEventListener("beforeinstallprompt", function (e) {
     e.preventDefault();
     deferred = e;
-    if (installBtn) installBtn.hidden = false;
+    show(true);
   });
-  if (installBtn) {
-    installBtn.addEventListener("click", function () {
-      if (!deferred) return;
-      deferred.prompt();
-      deferred.userChoice.finally(function () {
-        deferred = null;
-        installBtn.hidden = true;
+  window.addEventListener("appinstalled", function () { show(false); });
+
+  buttons.forEach(function (b) {
+    b.addEventListener("click", function () {
+      if (deferred) {
+        deferred.prompt();
+        deferred.userChoice.finally(function () { deferred = null; });
+        return;
+      }
+      if (help && typeof help.showModal === "function") help.showModal();
+    });
+  });
+  if (help) {
+    help.querySelectorAll("[data-close]").forEach(function (b) {
+      b.addEventListener("click", function () { help.close(); });
+    });
+    help.addEventListener("click", function (e) { if (e.target === help) help.close(); });
+  }
+})();
+
+// ---------------------------------------------------------------------------
+// Tabelas no celular: cada linha vira um cartão com o nome da coluna ao lado do valor
+// ---------------------------------------------------------------------------
+(function () {
+  "use strict";
+  document.querySelectorAll(".content table").forEach(function (table) {
+    var heads = Array.prototype.map.call(table.querySelectorAll("thead th"), function (th) {
+      return th.textContent.trim();
+    });
+    if (!heads.length) return;
+    table.classList.add("stack");
+    var wrap = table.closest(".table-wrap");
+    if (wrap) wrap.classList.add("stack-wrap");
+    table.querySelectorAll("tbody tr").forEach(function (tr) {
+      var i = 0;
+      Array.prototype.forEach.call(tr.children, function (td) {
+        if (!td.hasAttribute("data-label")) td.setAttribute("data-label", heads[i] || "");
+        i += td.colSpan || 1;
       });
     });
-  }
-  window.addEventListener("appinstalled", function () {
-    if (installBtn) installBtn.hidden = true;
   });
-
-  // iPhone/iPad (Safari não tem botão de instalar): mostra a dica uma vez
-  var ios = /iphone|ipad|ipod/i.test(navigator.userAgent) ||
-    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  var tip = document.getElementById("ios-install");
-  var seen = false;
-  try { seen = localStorage.getItem("ios-install-tip") === "1"; } catch (err) { /* sem armazenamento */ }
-  if (tip && ios && !standalone && !seen) {
-    tip.hidden = false;
-    var close = document.getElementById("ios-install-close");
-    if (close) {
-      close.addEventListener("click", function () {
-        tip.hidden = true;
-        try { localStorage.setItem("ios-install-tip", "1"); } catch (err) { /* ignora */ }
-      });
-    }
-  }
 })();

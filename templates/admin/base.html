@@ -121,11 +121,10 @@
         <span class="module-pill mod-sales">{{ icon('cart') }}Bot de vendas</span>
       {%- endif %}
       <span class="topbar-title">{{ self.title() }}</span>
-      <button type="button" class="btn btn-sm install-btn" id="install-app" hidden>{{ icon('download') }}<span>Instalar app</span></button>
+      <button type="button" class="btn btn-sm install-btn" data-install hidden>{{ icon('download') }}<span>Instalar</span></button>
       <a class="topbar-link" href="/" target="_blank" rel="noopener">{{ icon('external') }}<span>Ver página inicial</span></a>
     </header>
     <main class="content">
-      <div class="alert alert-info ios-install" id="ios-install" hidden>{{ icon('download') }}<span><b>Instale o painel como app:</b> no Safari, toque em <b>Compartilhar</b> (o quadrado com a seta) e depois em <b>Adicionar à Tela de Início</b>.</span><button type="button" class="icon-btn" id="ios-install-close" aria-label="Fechar">{{ icon('x') }}</button></div>
       {% for f in flashes %}
         <div class="alert alert-{{ f.kind }}">{{ icon('check' if f.kind == 'ok' else 'alert') }}<span>{{ f.message }}</span></div>
       {% endfor %}
@@ -133,11 +132,45 @@
     </main>
   </div>
 </div>
+
+{#- Barra de navegação de app (só no celular) -#}
+{%- set bp = request.url.path -%}
+<nav class="tabbar" aria-label="Navegação principal">
+  <a href="/admin/" class="{{ 'on' if bp in ('/admin/', '/admin') }}">{{ icon('dashboard') }}<span>Início</span></a>
+  <a href="/admin/offers/bots" class="{{ 'on' if bp.startswith('/admin/offers/bots') }}">{{ icon('zap') }}<span>Bots</span></a>
+  <a href="/admin/offers" class="{{ 'on' if bp == '/admin/offers' }}">{{ icon('tag') }}<span>Ofertas</span></a>
+  <a href="/admin/orders" class="{{ 'on' if bp.startswith(('/admin/orders', '/admin/payments', '/admin/subscriptions', '/admin/users')) }}">{{ icon('cart') }}<span>Vendas</span></a>
+  <button type="button" id="tabbar-menu">{{ icon('menu') }}<span>Menu</span></button>
+</nav>
 {% else %}
 <main class="auth">
   {% block auth %}{% endblock %}
 </main>
 {% endif %}
+{#- Como instalar (aparece ao tocar em "Instalar app" quando o navegador não instala sozinho) -#}
+<dialog class="sheet" id="install-help" aria-labelledby="install-title">
+  <div class="sheet-head">
+    <img src="/static/pwa/icon-192.png" alt="" width="44" height="44">
+    <div><h2 id="install-title">Instalar o painel como app</h2><p>Fica com ícone na tela inicial e abre em tela cheia.</p></div>
+    <button type="button" class="icon-btn" data-close aria-label="Fechar">{{ icon('x') }}</button>
+  </div>
+  <div class="sheet-ios">
+    <ol class="install-steps">
+      <li><span class="n">1</span><span>Abra este endereço no <b>Safari</b> (no Chrome do iPhone também funciona, pelo botão de compartilhar ao lado do endereço).</span></li>
+      <li><span class="n">2</span><span>Toque em <b>Compartilhar</b> <span class="ios-share" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg></span> na barra de baixo.</span></li>
+      <li><span class="n">3</span><span>Role a lista e toque em <b>Adicionar à Tela de Início</b>.</span></li>
+      <li><span class="n">4</span><span>Toque em <b>Adicionar</b>. Pronto: o app <b>Painel Bots</b> aparece na tela inicial.</span></li>
+    </ol>
+  </div>
+  <div class="sheet-other">
+    <ol class="install-steps">
+      <li><span class="n">1</span><span>Abra o menu do navegador (<b>⋮</b> no Chrome, <b>…</b> no Edge).</span></li>
+      <li><span class="n">2</span><span>Toque em <b>Instalar app</b> ou <b>Adicionar à tela inicial</b>.</span></li>
+    </ol>
+    <p class="hint">Se a opção não aparecer, o painel precisa estar num endereço com <b>https</b> (com domínio).</p>
+  </div>
+  <button type="button" class="btn btn-block" data-close>Entendi</button>
+</dialog>
 <script src="/static/js/admin.js" defer></script>
 </body>
 </html>
