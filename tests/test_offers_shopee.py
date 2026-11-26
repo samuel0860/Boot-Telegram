@@ -100,6 +100,7 @@ def test_client_wrong_secret_and_short_link():
 @pytest.mark.parametrize("url,expected", [
     ("https://shopee.com.br/Air-Fryer-Mondial-i.1111.2222?sp_atk=x", (1111, 2222)),
     ("https://shopee.com.br/product/1111/2222", (1111, 2222)),
+    ("https://shopee.com.br/opaanlp/457680559/19697814003?__mobile__=1&utm_medium=affiliates", (457680559, 19697814003)),
     ("https://shopee.com.br/lojax", None),
 ])
 def test_parse_item_ids(url, expected):
@@ -269,3 +270,12 @@ def test_manual_post_jumps_telegram_queue():
     with session_scope() as s:
         post = s.scalar(select(OfferPost).where(OfferPost.bot_id == bot))
         assert post.queued_at < utcnow() - timedelta(hours=12)
+
+
+def test_converter_short_link_with_new_redirect_format():
+    configure_shopee()
+    bot = make_bot()
+    target = "https://shopee.com.br/opaanlp/1111/2222?__mobile__=1&utm_medium=affiliates"
+    preview = converter.import_link(bot, "https://s.shopee.com.br/7AfQt1V98c?share_channel_code=1",
+                                    shopee_factory=FakeShopee().factory(), transport=_redirect_to(target))
+    assert preview.link == "https://s.shopee.com.br/7AfQt1V98c?share_channel_code=1"

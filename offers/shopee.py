@@ -39,7 +39,8 @@ OFFER_FIELDS = ("itemId shopId productName priceMin priceMax priceDiscountRate i
                 "commissionRate sales ratingStar shopName productCatIds")
 
 # https://shopee.com.br/Nome-do-produto-i.123456.7891011  |  https://shopee.com.br/product/123456/7891011
-ITEM_RE = re.compile(r"-i\.(\d+)\.(\d+)|/product/(\d+)/(\d+)")
+# -i.LOJA.ITEM (página), /product/LOJA/ITEM e /opaanlp/LOJA/ITEM (destino dos links curtos s.shopee.com.br)
+ITEM_RE = re.compile(r"-i\.(\d+)\.(\d+)|/(?:product|opaanlp|[a-z]{3,12})/(\d{3,})/(\d{3,})(?=[/?#]|$)")
 
 
 class ShopeeError(Exception):
