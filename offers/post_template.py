@@ -16,6 +16,7 @@ from __future__ import annotations
 import re
 import zlib
 from dataclasses import dataclass, replace
+from datetime import datetime
 from decimal import Decimal
 from html import escape
 
@@ -47,7 +48,11 @@ PLACEHOLDERS: dict[str, str] = {
     "link": "Link de afiliado (ou do produto)",
     "frete": "“Frete grátis” quando houver",
     "rodape": "Rodapé configurado no painel",
-    "loja": "Loja da oferta (Mercado Livre, Shopee ou Amazon)",
+    "loja": "Loja da oferta (Mercado Livre, Shopee, Amazon ou TikTok Shop)",
+    "prova": "Prova social, quando a loja informa: “⭐ 4,8 · +1,5 mil vendidos”",
+    "nota": "Nota do produto, se houver (ex.: 4,8)",
+    "vendidos": "Quantidade vendida, se houver (ex.: +1,5 mil vendidos)",
+    "hora": "Hora em que o preço foi lido na loja (ex.: 14h30) — use em “preço das {hora}, pode mudar”",
 }
 
 _TOKEN = re.compile(r"\{(\w+)\}")
@@ -83,12 +88,16 @@ class PostData:
     headline: str | None = None
     coupon: str | None = None
     store: str = ""
+    rating: Decimal | None = None          # nota da loja (0-5)
+    sold: int | None = None                # unidades vendidas
+    seen_at: datetime | None = None        # quando o preço foi lido na loja
 
 
 # --------------------------------------------------------------------------- #
 # Chamada automática
 # --------------------------------------------------------------------------- #
-STORE_PREP = {"Mercado Livre": "NO MERCADO LIVRE", "Shopee": "NA SHOPEE", "Amazon": "NA AMAZON"}
+STORE_PREP = {"Mercado Livre": "NO MERCADO LIVRE", "Shopee": "NA SHOPEE", "Amazon": "NA AMAZON",
+              "TikTok Shop": "NO TIKTOK SHOP"}
 # Formatos com desconto ({n} = nome curto do produto, {d} = desconto). Sem artigo antes do
 # produto (no/na), que dependeria do gênero da palavra.
 WITH_DISCOUNT = (
@@ -130,6 +139,22 @@ def auto_headline(data: PostData) -> str:
     return WITHOUT_DISCOUNT[pick % len(WITHOUT_DISCOUNT)].format(n=name, loja=store)
 
 
+def _sold_text(sold: int | None) -> str:
+    if not sold:
+        return ""
+    if sold < 1000:
+        return f"+{sold} vendidos"
+    if sold < 1_000_000:
+        n = f"{sold / 1000:.1f}".rstrip("0").rstrip(".").replace(".", ",")
+        return f"+{n} mil vendidos"
+    n = f"{sold / 1_000_000:.1f}".rstrip("0").rstrip(".").replace(".", ",")
+    return f"+{n} mi vendidos"
+
+
+def _rating_text(rating: Decimal | None) -> str:
+    return f"{rating:.1f}".replace(".", ",") if rating else ""
+
+
 def _values(data: PostData, default_headline: str, footer: str) -> dict[str, str]:
     old = data.original_price if data.original_price and data.original_price > data.price else None
     precos = f"De: {short_brl(old)} | Por: {short_brl(data.price)}" if old else f"Por: {short_brl(data.price)}"
@@ -146,7 +171,20 @@ def _values(data: PostData, default_headline: str, footer: str) -> dict[str, str
         "frete": "Frete grátis" if data.free_shipping else "",
         "rodape": (footer or "").strip(),
         "loja": (data.store or "").strip(),
+        "nota": _rating_text(data.rating),
+        "vendidos": _sold_text(data.sold),
+        "prova": " · ".join(x for x in (f"⭐ {_rating_text(data.rating)}" if data.rating else "",
+                                         _sold_text(data.sold)) if x),
+        "hora": data.seen_at.astimezone(_tz()).strftime("%Hh%M") if data.seen_at else "",
     }
+
+
+def _tz():
+    from zoneinfo import ZoneInfo
+
+    from config import settings
+
+    return ZoneInfo(settings.display_timezone)
 
 
 def _drop_empty_lines(template: str, values: dict[str, str]) -> list[str]:

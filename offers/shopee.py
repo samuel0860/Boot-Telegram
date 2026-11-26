@@ -115,7 +115,34 @@ def to_product(node: dict, source: str | None = None) -> Product | None:
         raw=node,
         platform=PLATFORM,
         affiliate_url=node.get("offerLink") or None,
+        commission_rate=_fraction(node.get("commissionRate")),
+        rating=_rating(node.get("ratingStar")),
+        sold=_int_or_none(node.get("sales")),
     )
+
+
+def _fraction(value: Any) -> Decimal | None:
+    try:
+        v = Decimal(str(value))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    return v.quantize(Decimal("0.0001")) if 0 < v < 1 else None
+
+
+def _rating(value: Any) -> Decimal | None:
+    try:
+        v = Decimal(str(value)).quantize(Decimal("0.01"))
+    except (InvalidOperation, TypeError, ValueError):
+        return None
+    return v if 0 < v <= 5 else None
+
+
+def _int_or_none(value: Any) -> int | None:
+    try:
+        v = int(value)
+    except (TypeError, ValueError):
+        return None
+    return v if v >= 0 else None
 
 
 class ShopeeClient:

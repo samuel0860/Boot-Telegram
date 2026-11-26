@@ -97,8 +97,8 @@ def downgrade() -> None:
     op.drop_constraint("pk_app_settings", "app_settings", type_="primary")
     op.execute("DELETE FROM app_settings WHERE account_id <> 1")
     op.create_primary_key("pk_app_settings", "app_settings", ["key"])
-    op.execute("INSERT INTO app_settings (key, value, is_secret) SELECT key, value, false FROM platform_settings "
-               "ON CONFLICT DO NOTHING")
+    op.execute("INSERT INTO app_settings (account_id, key, value, is_secret) "
+               "SELECT 1, key, value, false FROM platform_settings ON CONFLICT DO NOTHING")
     op.drop_table("platform_settings")
     for table, old, new, _, cols in UNIQUES:
         op.drop_constraint(new, table, type_="unique")

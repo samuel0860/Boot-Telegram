@@ -54,6 +54,10 @@ class MLProduct:
     platform: str = "mercadolivre"
     # link de afiliado que a própria API já devolve (Shopee); no Mercado Livre é colado à mão
     affiliate_url: str | None = None
+    # opcionais (Shopee/TikTok informam): comissão (fração, 0.08 = 8%), nota (0-5) e unidades vendidas
+    commission_rate: Decimal | None = None
+    rating: Decimal | None = None
+    sold: int | None = None
 
     @property
     def discount_pct(self) -> int | None:

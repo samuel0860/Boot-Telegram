@@ -16,7 +16,7 @@ from models import OfferBot, OfferPost, OfferStatus, PromoOffer
 from offers.config import TZ
 from offers.phrases import category_for
 
-STORES = (("mercadolivre", "Mercado Livre"), ("shopee", "Shopee"), ("amazon", "Amazon"))
+STORES = (("mercadolivre", "Mercado Livre"), ("shopee", "Shopee"), ("amazon", "Amazon"), ("tiktok", "TikTok Shop"))
 PERIODS = (7, 30, 90)
 MAX_TYPES = 8
 

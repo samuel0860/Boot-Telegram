@@ -86,6 +86,8 @@ G2 = {"id": "120363000000000002@g.us", "name": "Promo Casa"}
 
 SEARCH_DEFAULTS = {"mode": "auto", "min_discount": "20", "categories": "MLB1000", "keywords": "air fryer",
                    "max_posts_per_cycle": "2", "spacing_seconds": "15", "blocked_words": "capinha",
+                   # testes antigos do Mercado Livre postam sem meli.la (a trava tem teste próprio)
+                   "ml_require_affiliate": "0",
                    "active_hours": ""}
 
 

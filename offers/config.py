@@ -44,6 +44,14 @@ DEFAULT_CONFIG: dict[str, str] = {
     "no_repeat_days": "7",
     "active_hours": "08:00-23:00",
     "skip_fake": "1",                  # não publica sozinho oferta com desconto suspeito ("De" inflado)
+    "rank_by": "discount",             # discount = maior desconto primeiro | score = desconto + comissão + nota + vendas
+    "track_links": "0",
+    "ml_require_affiliate": "1",       # Mercado Livre só sai sozinho com o seu meli.la (sem ele não há comissão)                # 1 = link da Shopee com sub_id (bot, canal e horário) para medir no relatório
+    # TikTok Shop (API de afiliado criador)
+    "src_tiktok": "0",
+    "tiktok_keywords": "",
+    "tiktok_sort": "commission_rate",  # commission_rate | units_sold | product_sales_price | commission
+    "tiktok_min_commission": "0",      # comissão mínima em %
     # Texto do post
     "template": "",                    # vazio = modelo padrão
     "default_headline": "",            # vazio = chamada automática (produto + desconto)
@@ -162,6 +170,25 @@ class BotConfig:
     amazon_keywords: list[str] = field(default_factory=list)
     amazon_nodes: list[str] = field(default_factory=list)
     amazon_sort: str = "featured"
+    rank_by: str = "discount"
+    track_links: bool = False
+    ml_require_affiliate: bool = True
+    use_tiktok: bool = False
+    tiktok_app_key: str = ""
+    tiktok_app_secret: str = ""
+    tiktok_connected: bool = False
+    tiktok_keywords: list[str] = field(default_factory=list)
+    tiktok_sort: str = "commission_rate"
+    tiktok_min_commission: int = 0
+
+    @property
+    def tiktok_credentials_ok(self) -> bool:
+        """App do TikTok Shop cadastrado e conta de criador conectada."""
+        return bool(self.tiktok_app_key and self.tiktok_app_secret and self.tiktok_connected)
+
+    @property
+    def tiktok_ready(self) -> bool:
+        return self.use_tiktok and self.tiktok_credentials_ok
 
     @property
     def credentials_ok(self) -> bool:
@@ -190,12 +217,12 @@ class BotConfig:
 
     @property
     def any_store(self) -> bool:
-        return self.use_mercadolivre or self.use_shopee or self.use_amazon
+        return self.use_mercadolivre or self.use_shopee or self.use_amazon or self.use_tiktok
 
     @property
     def sources_ready(self) -> bool:
         """Pelo menos uma loja ligada e com credenciais."""
-        return self.ml_ready or self.shopee_ready or self.amazon_ready
+        return self.ml_ready or self.shopee_ready or self.amazon_ready or self.tiktok_ready
 
     def missing_credentials(self) -> list[str]:
         missing = []
@@ -205,6 +232,8 @@ class BotConfig:
             missing.append("Shopee")
         if self.use_amazon and not self.amazon_credentials_ok:
             missing.append("Amazon")
+        if self.use_tiktok and not self.tiktok_credentials_ok:
+            missing.append("TikTok Shop")
         return missing
 
     def is_active_time(self, now_local: time) -> bool:
@@ -218,6 +247,10 @@ class BotConfig:
         return self.is_active_time(now.astimezone(TZ).time())
 
 
+TIKTOK_SORTS = {"commission_rate": "Maior % de comissão", "commission": "Maior comissão em R$",
+                "units_sold": "Mais vendidos", "product_sales_price": "Menor preço"}
+
+
 def merged(raw: dict | None) -> dict[str, str]:
     values = dict(DEFAULT_CONFIG)
     for k, v in (raw or {}).items():
@@ -228,7 +261,8 @@ def merged(raw: dict | None) -> dict[str, str]:
 
 def parse(raw: dict | None, *, enabled: bool = False, app_id: str = "", secret_key: str = "",
           shopee_app_id: str = "", shopee_secret: str = "", amazon_id: str = "", amazon_secret: str = "",
-          amazon_tag: str = "", amazon_version: str = "3.1") -> BotConfig:
+          amazon_tag: str = "", amazon_version: str = "3.1", tiktok_app_key: str = "",
+          tiktok_app_secret: str = "", tiktok_connected: bool = False) -> BotConfig:
     v = merged(raw)
     start, end = parse_hours(v["active_hours"])
     return BotConfig(
@@ -268,6 +302,16 @@ def parse(raw: dict | None, *, enabled: bool = False, app_id: str = "", secret_k
         shopee_sort=v["shopee_sort"] if v["shopee_sort"] in ("sales", "commission", "relevance", "price_asc") else "sales",
         use_amazon=v["src_amazon"] == "1",
         skip_fake=v["skip_fake"] == "1",
+        rank_by="score" if v["rank_by"] == "score" else "discount",
+        track_links=v["track_links"] == "1",
+        ml_require_affiliate=v["ml_require_affiliate"] != "0",
+        use_tiktok=v["src_tiktok"] == "1",
+        tiktok_app_key=tiktok_app_key.strip(),
+        tiktok_app_secret=tiktok_app_secret.strip(),
+        tiktok_connected=bool(tiktok_connected),
+        tiktok_keywords=split_list(v["tiktok_keywords"])[:10],
+        tiktok_sort=v["tiktok_sort"] if v["tiktok_sort"] in TIKTOK_SORTS else "commission_rate",
+        tiktok_min_commission=_int(v["tiktok_min_commission"], 0, 0, 80),
         amazon_id=amazon_id.strip(),
         amazon_secret=amazon_secret.strip(),
         amazon_tag=amazon_tag.strip(),

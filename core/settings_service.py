@@ -22,7 +22,8 @@ from models import AppSetting, PlatformSetting
 
 logger = logging.getLogger(__name__)
 
-SECRET_KEYS = {"ml_secret_key", "shopee_secret", "amazon_secret"}
+SECRET_KEYS = {"ml_secret_key", "shopee_secret", "amazon_secret", "tiktok_app_secret", "tiktok_access_token",
+               "tiktok_refresh_token"}
 # Valores da PLATAFORMA (fora das contas): sinal de vida dos processos
 PLATFORM_KEYS = {"offers_heartbeat_at", "bot_heartbeat_at"}
 
@@ -43,6 +44,14 @@ DEFAULTS: dict[str, str] = {
     "amazon_secret": "",
     "amazon_partner_tag": "",
     "amazon_version": "3.1",
+    # MÓDULO DE OFERTAS — TikTok Shop (app no Partner Center + conta de criador conectada)
+    "tiktok_app_key": "",
+    "tiktok_app_secret": "",
+    "tiktok_auth_url": "",                # link de autorização do app (Partner Center)
+    "tiktok_access_token": "",
+    "tiktok_refresh_token": "",
+    "tiktok_access_expires": "",          # unix (segundos)
+    "tiktok_creator": "",                 # nome da conta conectada
     "offers_heartbeat_at": "",
     # MÓDULO DE VENDAS
     "bot_heartbeat_at": "",

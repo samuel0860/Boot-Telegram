@@ -10,27 +10,28 @@ from core.audit import log_event, utcnow
 from database import session_scope
 from models import OfferBot, OfferPost, OfferStatus, PromoOffer, TargetChannel
 from offers import bots as bot_service
-from offers import post_template
+from offers import post_template, tracking
 from offers.config import BotConfig
 
-STORE_LABELS = {"mercadolivre": "Mercado Livre", "shopee": "Shopee", "amazon": "Amazon"}
+STORE_LABELS = {"mercadolivre": "Mercado Livre", "shopee": "Shopee", "amazon": "Amazon", "tiktok": "TikTok Shop"}
 
 
-def post_data(offer: PromoOffer) -> post_template.PostData:
+def post_data(offer: PromoOffer, link: str | None = None) -> post_template.PostData:
     return post_template.PostData(
-        title=offer.title, price=offer.price, link=offer.link, original_price=offer.original_price,
+        title=offer.title, price=offer.price, link=link or offer.link, original_price=offer.original_price,
         discount_pct=offer.discount_pct, free_shipping=offer.free_shipping,
         headline=offer.headline, coupon=offer.coupon, store=STORE_LABELS.get(offer.platform or "", ""),
+        rating=offer.rating, sold=offer.sold, seen_at=offer.last_seen_at,
     )
 
 
-def telegram_caption(offer: PromoOffer, cfg: BotConfig) -> str:
-    """Legenda (HTML) a partir do modelo do bot."""
-    return post_template.render_telegram(post_data(offer), cfg.template, cfg.default_headline, cfg.footer)
+def telegram_caption(offer: PromoOffer, cfg: BotConfig, link: str | None = None) -> str:
+    """Legenda (HTML) a partir do modelo do bot. `link` = link marcado (sub_id) deste envio."""
+    return post_template.render_telegram(post_data(offer, link), cfg.template, cfg.default_headline, cfg.footer)
 
 
-def whatsapp_caption(offer: PromoOffer, cfg: BotConfig) -> str:
-    return post_template.render_whatsapp(post_data(offer), cfg.template, cfg.default_headline, cfg.footer)
+def whatsapp_caption(offer: PromoOffer, cfg: BotConfig, link: str | None = None) -> str:
+    return post_template.render_whatsapp(post_data(offer, link), cfg.template, cfg.default_headline, cfg.footer)
 
 
 @dataclass(frozen=True)
@@ -68,7 +69,8 @@ def claim_next_post(bot_id: int) -> PostJob | None:
         post.status = OfferStatus.POSTED
         post.posted_at = now
         offer = session.get(PromoOffer, post.offer_id)
-        return PostJob(post.id, offer.id, bot_id, targets, telegram_caption(offer, cfg), offer.image_url, offer.link)
+        link = tracking.link_for(offer, cfg, bot_id, "telegram", now)
+        return PostJob(post.id, offer.id, bot_id, targets, telegram_caption(offer, cfg, link), offer.image_url, link)
 
 
 def finish_post(post_id: int, sent: list[dict], errors: list[str]) -> None:

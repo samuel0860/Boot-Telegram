@@ -319,7 +319,10 @@ def claim_next(bot_id: int) -> tuple[WaJob | None, str]:
         post.wa_status = WaStatus.SENT   # reservado; se falhar vira FAILED
         post.wa_sent_at = now
         offer = session.get(PromoOffer, post.offer_id)
-        return WaJob(post.id, bot_id, wa.instance, wa.groups, whatsapp_caption(offer, cfg), offer.image_url,
+        from offers import tracking
+
+        link = tracking.link_for(offer, cfg, bot_id, "whatsapp", now)
+        return WaJob(post.id, bot_id, wa.instance, wa.groups, whatsapp_caption(offer, cfg, link), offer.image_url,
                      wa.group_delay_seconds), "ok"
 
 

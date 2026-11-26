@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
@@ -29,6 +30,7 @@ from offers.amazon import AmazonAuthError, AmazonClient, AmazonError
 from offers.config import BotConfig
 from offers.mercadolivre import MercadoLivreClient, MLAuthError, MLError, MLProduct, Product
 from offers.shopee import ShopeeAuthError, ShopeeClient, ShopeeError
+from offers.tiktok import TikTokAuthError, TikTokClient, TikTokError
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,37 @@ def default_amazon_factory(cfg: BotConfig) -> AmazonClient:
     return AmazonClient(cfg.amazon_id, cfg.amazon_secret, cfg.amazon_tag, cfg.amazon_version)
 
 
+def default_tiktok_factory(cfg: BotConfig) -> TikTokClient:
+    """Cliente do TikTok Shop com o token da conta (renovado antes de vencer)."""
+    return TikTokClient(cfg.tiktok_app_key, cfg.tiktok_app_secret, bot_service.tiktok_token())
+
+
+TikTokFactory = Callable[[BotConfig], TikTokClient]
+
+
+# --------------------------------------------------------------------------- #
+# Ordem de publicação
+# --------------------------------------------------------------------------- #
+def offer_score(offer: PromoOffer) -> float:
+    """Pontuação (opção "pontuação" do bot): quanto maior, antes sai.
+
+    1 ponto por % de desconto + 2 pontos por % de comissão + até 10 pontos pela nota
+    (acima de 4,0) + vendas em escala logarítmica (10 vendidos ≈ 5 pts, 1.000 ≈ 15 pts).
+    """
+    score = float(offer.discount_pct or 0)
+    score += 2 * float(offer.commission_rate or 0) * 100
+    if offer.rating:
+        score += max(-10.0, min(10.0, (float(offer.rating) - 4.0) * 10))
+    if offer.sold:
+        score += 5 * math.log10(1 + offer.sold)
+    return round(score, 2)
+
+
+def needs_affiliate_link(offer: PromoOffer) -> bool:
+    """Mercado Livre sem link de afiliado (meli.la) não paga comissão: não sai sozinho."""
+    return offer.platform == PLATFORM and not offer.affiliate_url
+
+
 @dataclass
 class CycleResult:
     collected: int = 0
@@ -61,6 +94,7 @@ class CycleResult:
     updated: int = 0
     queued: int = 0
     suspicious: int = 0
+    no_affiliate: int = 0
     errors: list[str] = field(default_factory=list)
     finished_at: str = ""
 
@@ -69,6 +103,8 @@ class CycleResult:
              f"{self.new} novos, {self.queued} enviados para a fila")
         if self.suspicious:
             s += f", {self.suspicious} com desconto suspeito (não publicadas)"
+        if self.no_affiliate:
+            s += f", {self.no_affiliate} do Mercado Livre aguardando o seu link de afiliado"
         if self.errors:
             s += f" — {len(self.errors)} aviso(s): " + "; ".join(self.errors[:3])
         return s
@@ -163,6 +199,9 @@ def upsert_offer(session: Session, p: MLProduct, now: datetime) -> tuple[PromoOf
     offer.category_id = p.category_id
     offer.source = p.source
     offer.last_seen_at = now
+    offer.commission_rate = getattr(p, "commission_rate", None)
+    offer.rating = getattr(p, "rating", None)
+    offer.sold = getattr(p, "sold", None)
     session.flush()
     price_history.update(session, offer, now)
     return offer, created
@@ -206,13 +245,22 @@ def _save(bot_id: int, products: list[MLProduct], cfg: BotConfig, result: CycleR
             seen_posts.append(post.id)
 
         if allow_queue and cfg.mode == "auto" and seen_posts:
-            best = session.scalars(
+            candidates = session.scalars(
                 select(OfferPost).join(PromoOffer, PromoOffer.id == OfferPost.offer_id)
                 .where(OfferPost.id.in_(seen_posts), OfferPost.status == OfferStatus.NEW,
                        PromoOffer.price_note.is_(None) if cfg.skip_fake else true())
-                .order_by(PromoOffer.discount_pct.desc().nulls_last(), PromoOffer.price)
-                .limit(cfg.max_posts_per_cycle)
             ).all()
+            ready = []
+            for post in candidates:
+                if cfg.ml_require_affiliate and needs_affiliate_link(post.offer):
+                    result.no_affiliate += 1
+                else:
+                    ready.append(post)
+            if cfg.rank_by == "score":
+                ready.sort(key=lambda p: (offer_score(p.offer), -float(p.offer.price)), reverse=True)
+            else:
+                ready.sort(key=lambda p: (p.offer.discount_pct or 0, -float(p.offer.price)), reverse=True)
+            best = ready[:cfg.max_posts_per_cycle]
             bot = session.get(OfferBot, bot_id)
             for post in best:
                 post.status = OfferStatus.QUEUED
@@ -260,16 +308,34 @@ def collect_amazon(client: AmazonClient, cfg: BotConfig, result: CycleResult) ->
     return list(products.values())
 
 
+def collect_tiktok(client: TikTokClient, cfg: BotConfig, result: CycleResult) -> list[Product]:
+    """Produtos com comissão do TikTok Shop, já com o SEU link de afiliado."""
+    products: dict[str, Product] = {}
+    searches = [(f"tiktok:{kw}"[:100], [kw]) for kw in cfg.tiktok_keywords] or [("tiktok:mais comissão", None)]
+    for name, keywords in searches:
+        try:
+            for p in client.search_with_links(keywords, sort=cfg.tiktok_sort, min_commission=cfg.tiktok_min_commission,
+                                              source=name):
+                products.setdefault(p.external_id, p)
+        except TikTokAuthError:
+            raise
+        except TikTokError as exc:
+            result.errors.append(f"{name}: {exc}")
+    return list(products.values())
+
+
 MISSING_MSG = {
     "Mercado Livre": "Configure o App ID e a Secret Key do Mercado Livre em Ofertas → Lojas e APIs.",
     "Shopee": "Configure o AppID e a Senha da Shopee em Ofertas → Lojas e APIs.",
     "Amazon": "Configure o Credential ID, o Secret e o Partner Tag da Amazon em Ofertas → Lojas e APIs.",
+    "TikTok Shop": "Cadastre o app do TikTok Shop e conecte a sua conta de criador em Ofertas → Lojas e APIs.",
 }
 
 
 def run_cycle(bot_id: int, client_factory: ClientFactory = default_client_factory, *,
               shopee_factory: ShopeeFactory = default_shopee_factory,
-              amazon_factory: AmazonFactory = default_amazon_factory, triggered_by: str = "bot") -> CycleResult:
+              amazon_factory: AmazonFactory = default_amazon_factory,
+              tiktok_factory: TikTokFactory | None = None, triggered_by: str = "bot") -> CycleResult:
     """Executa um ciclo completo do bot (todas as lojas ligadas nele).
 
     Nunca lança exceção: erros vão em result.errors.
@@ -283,11 +349,11 @@ def run_cycle(bot_id: int, client_factory: ClientFactory = default_client_factor
         return result
     with tenancy.use_account(account_id):     # tudo o que o ciclo gravar pertence à conta do bot
         return _run_cycle(bot_id, client_factory, shopee_factory=shopee_factory, amazon_factory=amazon_factory,
-                          triggered_by=triggered_by)
+                          tiktok_factory=tiktok_factory or default_tiktok_factory, triggered_by=triggered_by)
 
 
 def _run_cycle(bot_id: int, client_factory: ClientFactory, *, shopee_factory: ShopeeFactory,
-               amazon_factory: AmazonFactory, triggered_by: str) -> CycleResult:
+               amazon_factory: AmazonFactory, tiktok_factory: TikTokFactory, triggered_by: str) -> CycleResult:
     result = CycleResult()
     with session_scope() as session:
         bot = session.get(OfferBot, bot_id)
@@ -329,6 +395,17 @@ def _run_cycle(bot_id: int, client_factory: ClientFactory, *, shopee_factory: Sh
         except Exception as exc:  # noqa: BLE001
             logger.exception("Erro na busca da Amazon do bot %s", bot_id)
             result.errors.append(f"Amazon: erro inesperado {exc.__class__.__name__}")
+    if cfg.tiktok_ready:
+        try:
+            with tiktok_factory(cfg) as client:
+                found = collect_tiktok(client, cfg, result)
+            result.collected += len(found)
+            products += found
+        except TikTokError as exc:
+            result.errors.append(str(exc))
+        except Exception as exc:  # noqa: BLE001
+            logger.exception("Erro na busca do TikTok Shop do bot %s", bot_id)
+            result.errors.append(f"TikTok Shop: erro inesperado {exc.__class__.__name__}")
     if products:
         try:
             # só manda para a fila automaticamente se o bot estiver ligado

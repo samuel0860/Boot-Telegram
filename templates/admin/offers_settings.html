@@ -82,6 +82,55 @@
     <p class="hint mt-2">{{ icon('check') }} O link de afiliado vem <b>pronto da API</b>, já com o seu Partner Tag.
       {{ icon('alert') }} A Amazon só libera a Creators API para associados com <b>vendas qualificadas recentes</b> — se o teste disser “acesso negado”, é isso.</p>
   </section>
+
+  {# ---------------- TikTok Shop #}
+  {%- set tt_app = values.tiktok_app_key and tiktok_mask -%}
+  <section class="card">
+    <div class="card-header"><div class="card-icon">{{ icon('play') }}</div>
+      <div><h2>TikTok Shop <span class="badge {{ 'badge-ok' if tiktok_connected else ('badge-warn' if tt_app else 'badge-muted') }}"><span class="dot"></span>{{ 'conectado' if tiktok_connected else ('app salvo · falta conectar' if tt_app else 'não configurado') }}</span></h2>
+        <p>Usa a <b>API de afiliado criador</b> do TikTok Shop. São dois passos: cadastrar o app (uma vez) e conectar a sua conta de criador.</p></div></div>
+    {% if admin.is_superuser %}
+    <ol class="steps-list mb-3">
+      <li>Em <a href="https://partner.tiktokshop.com" target="_blank" rel="noopener">partner.tiktokshop.com</a>, crie um app com as permissões de <b>afiliado / criador</b>.</li>
+      <li>No app, cadastre este endereço de retorno (redirect): <code>{{ tiktok_callback }}</code></li>
+      <li>Copie o <b>App Key</b>, o <b>App Secret</b> e o <b>link de autorização</b> do app e salve abaixo.</li>
+      <li>Clique em <b>Conectar conta de criador</b> e autorize com a conta de criador afiliado do TikTok Shop.</li>
+    </ol>
+    <form method="post" action="/admin/offers/settings" class="form">{{ csrf() }}
+      <input type="hidden" name="store" value="tiktok">
+      <div class="grid2">
+        <label>App Key<input name="tiktok_app_key" value="{{ values.tiktok_app_key }}" maxlength="64" autocomplete="off" placeholder="6abc123..."></label>
+        <label>App Secret
+          <input name="tiktok_app_secret" type="password" maxlength="128" autocomplete="new-password"
+                 placeholder="{{ 'Salvo (' ~ tiktok_mask ~ ') — deixe vazio para manter' if tiktok_mask else 'Cole o App Secret' }}"></label>
+      </div>
+      <label>Link de autorização do app <small>copie do Partner Center (começa com https://)</small>
+        <input name="tiktok_auth_url" value="{{ values.tiktok_auth_url }}" maxlength="500" autocomplete="off" placeholder="https://services.tiktokshop.com/open/authorize?service_id=..."></label>
+      <div class="row-form">
+        <button class="btn">{{ icon('save') }}Salvar</button>
+        {% if tiktok_connected %}<button class="btn btn-secondary" formaction="/admin/offers/settings/test" data-loading="Testando...">{{ icon('plug') }}Testar</button>{% endif %}
+      </div>
+    </form>
+    <div class="row-form mt-3">
+      {% if tt_app and values.tiktok_auth_url %}<a class="btn {{ 'btn-secondary' if tiktok_connected else '' }}" href="/admin/offers/tiktok/connect">{{ icon('link') }}{{ 'Conectar de novo' if tiktok_connected else 'Conectar conta de criador' }}</a>{% endif %}
+      {% if tiktok_connected %}
+        <span class="hint">Conectado{% if values.tiktok_creator %} como <b>{{ values.tiktok_creator }}</b>{% endif %}. O acesso é renovado sozinho.</span>
+        <form method="post" action="/admin/offers/tiktok/disconnect" data-confirm="Desconectar a conta do TikTok Shop? Os bots param de buscar no TikTok.">{{ csrf() }}<button class="btn btn-sm btn-ghost-danger">{{ icon('x') }}Desconectar</button></form>
+      {% endif %}
+    </div>
+    {% if tt_app %}
+    <details class="mt-3">
+      <summary class="hint">O botão não voltou para o painel? Cole aqui o código</summary>
+      <form method="post" action="/admin/offers/tiktok/code" class="row-form mt-3">{{ csrf() }}
+        <input name="code" required maxlength="500" placeholder="Código ou o endereço inteiro que apareceu depois de autorizar">
+        <button class="btn btn-secondary">{{ icon('check') }}Usar código</button>
+      </form>
+    </details>
+    {% endif %}
+    {% endif %}
+    <p class="hint mt-2">{{ icon('check') }} O bot só publica produtos com o <b>seu link de afiliado</b> gerado pela API.
+      {{ icon('alert') }} A API de afiliado do TikTok Shop está em fase beta e o suporte ao Brasil ainda não está confirmado na documentação: o <b>Testar</b> mostra a resposta real do TikTok para a sua conta.</p>
+  </section>
   <p class="hint">{{ icon('lock') }} As chaves secretas ficam criptografadas e nunca são exibidas de novo.</p>
 </div>
 

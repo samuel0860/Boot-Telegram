@@ -66,7 +66,7 @@ async def security_headers(request: Request, call_next):
     if not request.url.path.startswith(("/docs", "/openapi.json")):
         response.headers.setdefault(
             "Content-Security-Policy",
-            "default-src 'self'; img-src 'self' data: https://*.mlstatic.com https://*.susercontent.com https://*.shopee.com.br https://m.media-amazon.com https://images-na.ssl-images-amazon.com; style-src 'self'; script-src 'self'; "
+            "default-src 'self'; img-src 'self' data: https://*.mlstatic.com https://*.susercontent.com https://*.shopee.com.br https://m.media-amazon.com https://images-na.ssl-images-amazon.com https://*.ibyteimg.com https://*.tiktokcdn.com https://*.tiktokcdn-us.com; style-src 'self'; script-src 'self'; "
             "frame-ancestors 'none'; form-action 'self'; base-uri 'self'",
         )
     if settings.is_production:

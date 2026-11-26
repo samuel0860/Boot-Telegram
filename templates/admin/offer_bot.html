@@ -258,6 +258,7 @@
         <label class="pill"><input type="checkbox" name="src_mercadolivre" value="1" {{ 'checked' if cfg.use_mercadolivre }}><span>Mercado Livre{% if not cfg.credentials_ok %} <small>· sem credenciais</small>{% endif %}</span></label>
         <label class="pill"><input type="checkbox" name="src_shopee" value="1" {{ 'checked' if cfg.use_shopee }}><span>Shopee{% if not cfg.shopee_credentials_ok %} <small>· sem credenciais</small>{% endif %}</span></label>
         <label class="pill"><input type="checkbox" name="src_amazon" value="1" {{ 'checked' if cfg.use_amazon }}><span>Amazon{% if not cfg.amazon_credentials_ok %} <small>· sem credenciais</small>{% endif %}</span></label>
+        <label class="pill"><input type="checkbox" name="src_tiktok" value="1" {{ 'checked' if cfg.use_tiktok }}><span>TikTok Shop{% if not cfg.tiktok_credentials_ok %} <small>· não conectado</small>{% endif %}</span></label>
       </div>
     </section>
     <section class="card">
@@ -288,6 +289,18 @@
         <span><b>Detector de desconto falso</b> — não publica sozinho quando o preço “com desconto” é o mesmo que a loja já cobrava nos últimos dias (o “De” foi inflado). A oferta continua na lista com o aviso, e você pode publicar manualmente.</span></label>
     </section>
     <section class="card">
+      <h2 class="mb-3">Escolha e medição</h2>
+      <label>Ordem de publicação {{ help('Desconto: sai primeiro o maior % de desconto (como sempre foi). Pontuação: soma desconto, comissão, nota e vendas — tende a dar mais comissão por post. Teste em 1 bot e compare.') }}
+        <select name="rank_by">
+          <option value="discount" {{ 'selected' if cfg.rank_by == 'discount' }}>Maior desconto primeiro</option>
+          <option value="score" {{ 'selected' if cfg.rank_by == 'score' }}>Pontuação: desconto + comissão + nota + vendas</option>
+        </select></label>
+      <label class="check-line"><input type="checkbox" name="track_links" value="1" {{ 'checked' if cfg.track_links }}>
+        <span><b>Medir por grupo e horário (Shopee)</b> — o link de afiliado sai com marcações (sub_id) <code>bot{{ bot.id }}</code>, <code>tg</code>/<code>wa</code> e a hora (ex.: <code>h20</code>). No relatório de conversões da Shopee você vê o que cada grupo e horário vendeu. A comissão não muda; se a Shopee falhar, sai o link normal.</span></label>
+      <label class="check-line"><input type="checkbox" name="ml_require_affiliate" value="1" {{ 'checked' if cfg.ml_require_affiliate }}>
+        <span><b>Mercado Livre só com o meu link de afiliado</b> — oferta do Mercado Livre sem o seu <code>meli.la</code> fica em “Aguardando” em vez de sair sozinha (sem ele a venda não paga comissão).</span></label>
+    </section>
+    <section class="card">
       <h2 class="mb-3">O que buscar na Shopee</h2>
       <p class="hint mb-3">Busca por palavras-chave e/ou IDs de categoria. Sem nada, pega as ofertas mais vendidas. Os filtros acima (desconto, preço, palavras bloqueadas) valem para todas as lojas.</p>
       <div class="grid2">
@@ -295,6 +308,16 @@
         <label>Ordenar por
           <select name="shopee_sort">{% for key, label in shopee_sorts.items() %}<option value="{{ key }}" {{ 'selected' if cfg.shopee_sort == key }}>{{ label }}</option>{% endfor %}</select></label>
         <label>Categorias <small>IDs numéricos da Shopee, opcional</small><input name="shopee_categories" value="{{ values.shopee_categories }}" placeholder="100636, 100013"></label>
+      </div>
+    </section>
+    <section class="card">
+      <h2 class="mb-3">O que buscar no TikTok Shop</h2>
+      <p class="hint mb-3">Produtos com comissão (“open collaboration”) da sua conta de criador. O bot só publica os que recebem o <b>seu link de afiliado</b>. Conecte a conta em <a href="/admin/offers/settings">Lojas e APIs</a>.</p>
+      <div class="grid2">
+        <label>Palavras-chave <small>até 10, separadas por vírgula · vazio = maior comissão</small><input name="tiktok_keywords" value="{{ values.tiktok_keywords }}" placeholder="fone bluetooth, skincare"></label>
+        <label>Ordenar por
+          <select name="tiktok_sort">{% for key, label in tiktok_sorts.items() %}<option value="{{ key }}" {{ 'selected' if cfg.tiktok_sort == key }}>{{ label }}</option>{% endfor %}</select></label>
+        <label>Comissão mínima <small>%</small><input name="tiktok_min_commission" value="{{ cfg.tiktok_min_commission }}" inputmode="numeric"></label>
       </div>
     </section>
     <section class="card">

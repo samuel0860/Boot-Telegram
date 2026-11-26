@@ -54,6 +54,8 @@ def store_kwargs(values: dict[str, str]) -> dict[str, str]:
         "shopee_app_id": values.get("shopee_app_id", ""), "shopee_secret": values.get("shopee_secret", ""),
         "amazon_id": values.get("amazon_credential_id", ""), "amazon_secret": values.get("amazon_secret", ""),
         "amazon_tag": values.get("amazon_partner_tag", ""), "amazon_version": values.get("amazon_version", "3.1"),
+        "tiktok_app_key": values.get("tiktok_app_key", ""), "tiktok_app_secret": values.get("tiktok_app_secret", ""),
+        "tiktok_connected": bool(values.get("tiktok_refresh_token")),
     }
 
 
@@ -219,3 +221,37 @@ def copy_config(source: OfferBot, target: OfferBot, groups: list[str]) -> list[s
             update_config(target, {k: values[k] for k in keys})
             copied.append(label)
     return copied
+
+
+# --------------------------------------------------------------------------- #
+# TikTok Shop: token da conta de criador (renovado antes de vencer)
+# --------------------------------------------------------------------------- #
+def tiktok_token(*, transport: httpx.BaseTransport | None = None, now: float | None = None) -> str:
+    """Token de acesso do TikTok Shop da conta da vez; renova sozinho quando falta menos de 1 dia."""
+    import time
+
+    from database import session_scope
+    from offers import tiktok
+
+    with session_scope() as session:
+        values = settings_service.get_all(session)
+        token, refresh_token = values.get("tiktok_access_token", ""), values.get("tiktok_refresh_token", "")
+        try:
+            expires = int(values.get("tiktok_access_expires") or 0)
+        except ValueError:
+            expires = 0
+        if refresh_token and (not token or expires - (now or time.time()) < tiktok.REFRESH_BEFORE):
+            new = tiktok.refresh(values.get("tiktok_app_key", ""), values.get("tiktok_app_secret", ""), refresh_token,
+                                 transport=transport)
+            save_tiktok_tokens(session, new)
+            token = new["access_token"]
+        return token
+
+
+def save_tiktok_tokens(session: Session, tokens: dict, admin_id: int | None = None) -> None:
+    values = {"tiktok_access_token": tokens["access_token"], "tiktok_access_expires": str(tokens.get("expires") or 0)}
+    if tokens.get("refresh_token"):
+        values["tiktok_refresh_token"] = tokens["refresh_token"]
+    if tokens.get("name"):
+        values["tiktok_creator"] = tokens["name"]
+    settings_service.set_values(session, values, admin_id)

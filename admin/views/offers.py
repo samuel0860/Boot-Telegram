@@ -3,6 +3,7 @@ busca, modelo do post, ofertas de cada bot e as contas das lojas (Mercado Livre,
 from __future__ import annotations
 
 import re
+import secrets
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -18,7 +19,7 @@ from core.alert_service import OFFERS_HEARTBEAT
 from core.audit import utcnow
 from database import get_db
 from models import AdminUser, OfferBot, OfferPost, OfferStatus, OfferTarget, PromoOffer, TargetChannel
-from offers import amazon, collector, converter, overview, post_template, whatsapp
+from offers import amazon, collector, converter, overview, post_template, tiktok, whatsapp
 from offers import bots as bot_service
 from offers import config as offer_config
 from offers import stats as offer_stats
@@ -26,6 +27,7 @@ from offers.amazon import AmazonError
 from offers.mercadolivre import MLError
 from offers.posting import telegram_caption
 from offers.shopee import SORT_LABELS, ShopeeError
+from offers.tiktok import TikTokError
 from offers.whatsapp import WhatsAppError
 
 router = APIRouter()
@@ -34,6 +36,8 @@ router = APIRouter()
 ml_client_factory = collector.default_client_factory
 shopee_client_factory = collector.default_shopee_factory
 amazon_client_factory = collector.default_amazon_factory
+tiktok_client_factory = collector.default_tiktok_factory
+tiktok_transport = None   # testes: httpx.MockTransport para a troca do código
 wa_client_factory = whatsapp.default_client
 telegram_get_me = bot_service.telegram_get_me
 
@@ -158,7 +162,7 @@ def bot_page(bot_id: int, request: Request, tab: str = "geral", qr: int = 0,
     elif tab == "whatsapp":
         ctx.update(_whatsapp_context(bot, cfg, admin, bool(qr)))
     elif tab == "busca":
-        ctx.update(shopee_sorts=SORT_LABELS, amazon_sorts=amazon.SORT_LABELS, categories=offer_config.ML_CATEGORIES, selected_categories=set(cfg.categories),
+        ctx.update(shopee_sorts=SORT_LABELS, amazon_sorts=amazon.SORT_LABELS, tiktok_sorts=offer_config.TIKTOK_SORTS, categories=offer_config.ML_CATEGORIES, selected_categories=set(cfg.categories),
                    extra_categories=", ".join(c for c in cfg.categories if c not in offer_config.ML_CATEGORIES))
     elif tab == "post":
         ctx.update(placeholders=post_template.PLACEHOLDERS,
@@ -343,14 +347,21 @@ def bot_search(
     amazon_nodes: str = Form("", max_length=300),
     amazon_sort: str = Form("featured", max_length=20),
     skip_fake: str = Form(""),
+    rank_by: str = Form("discount"),
+    track_links: str = Form(""),
+    ml_require_affiliate: str = Form(""),
+    src_tiktok: str = Form(""),
+    tiktok_keywords: str = Form("", max_length=1000),
+    tiktok_sort: str = Form("commission_rate", max_length=32),
+    tiktok_min_commission: str = Form("0", max_length=3),
     _csrf: None = Depends(verify_csrf),
     admin: AdminUser = Depends(require_superuser),
     db: Session = Depends(get_db),
 ):
     bot = _bot(db, bot_id, lock=True)
     errors = []
-    if not src_mercadolivre and not src_shopee and not src_amazon:
-        errors.append("Marque pelo menos uma loja (Mercado Livre, Shopee ou Amazon).")
+    if not src_mercadolivre and not src_shopee and not src_amazon and not src_tiktok:
+        errors.append("Marque pelo menos uma loja (Mercado Livre, Shopee, Amazon ou TikTok Shop).")
     bad_nodes = [c for c in offer_config.split_list(amazon_nodes) if not c.isdigit()]
     if bad_nodes:
         errors.append(f"Categoria da Amazon inválida: {', '.join(bad_nodes)} (use os números das categorias).")
@@ -382,6 +393,12 @@ def bot_search(
         "src_amazon": "1" if src_amazon else "0", "amazon_keywords": amazon_keywords.strip(),
         "amazon_nodes": amazon_nodes.strip(), "amazon_sort": amazon_sort,
         "skip_fake": "1" if skip_fake else "0",
+        "rank_by": "score" if rank_by == "score" else "discount",
+        "track_links": "1" if track_links else "0",
+        "ml_require_affiliate": "1" if ml_require_affiliate else "0",
+        "src_tiktok": "1" if src_tiktok else "0", "tiktok_keywords": tiktok_keywords.strip(),
+        "tiktok_sort": tiktok_sort if tiktok_sort in offer_config.TIKTOK_SORTS else "commission_rate",
+        "tiktok_min_commission": tiktok_min_commission,
     })
     audit(db, request, admin, "offer_bot_search_saved", bot_id=bot.id, categories=len(all_categories))
     db.commit()
@@ -418,7 +435,7 @@ def bot_template(
     return redirect(_back(bot_id, "post"))
 
 
-def _test_stores(cfg, ml: bool, shop: bool, amz: bool = False) -> list[dict]:
+def _test_stores(cfg, ml: bool, shop: bool, amz: bool = False, tt: bool = False) -> list[dict]:
     steps: list[tuple[str, bool, str]] = []
     if ml:
         try:
@@ -439,6 +456,12 @@ def _test_stores(cfg, ml: bool, shop: bool, amz: bool = False) -> list[dict]:
                 steps += [(f"Amazon · {s}", ok, d) for s, ok, d in client.test_connection()]
         except AmazonError as exc:
             steps.append(("Amazon · Autenticação", False, str(exc)))
+    if tt:
+        try:
+            with tiktok_client_factory(cfg) as client:
+                steps += [(f"TikTok Shop · {s}", ok, d) for s, ok, d in client.test_connection()]
+        except TikTokError as exc:
+            steps.append(("TikTok Shop · Conexão", False, str(exc)))
     if not steps:
         steps.append(("Lojas", False, "nenhuma loja ligada/configurada"))
     return [{"step": s, "ok": ok, "detail": d[:300]} for s, ok, d in steps]
@@ -448,7 +471,8 @@ def _test_stores(cfg, ml: bool, shop: bool, amz: bool = False) -> list[dict]:
 def bot_test(bot_id: int, request: Request, _csrf: None = Depends(verify_csrf),
              admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
     cfg = bot_service.config_for(db, _bot(db, bot_id))
-    request.session["offers_test"] = _test_stores(cfg, cfg.use_mercadolivre, cfg.use_shopee, cfg.use_amazon)
+    request.session["offers_test"] = _test_stores(cfg, cfg.use_mercadolivre, cfg.use_shopee, cfg.use_amazon,
+                                                  cfg.use_tiktok)
     return redirect(_back(bot_id))
 
 
@@ -694,6 +718,11 @@ def offer_queue(bot_id: int, offer_id: int, request: Request, target: str = Form
     _bot(db, bot_id)
     if not _save_details(db, offer_id, affiliate_url, headline, coupon, request):
         return redirect(_offer_back(request, bot_id))
+    offer = db.get(PromoOffer, offer_id)
+    if offer is not None and collector.needs_affiliate_link(offer):
+        flash(request, "Cole o seu link de afiliado do Mercado Livre (meli.la) em “Chamada, cupom e link” antes de "
+                       "publicar — sem ele a venda não paga comissão.", "error")
+        return redirect(_offer_back(request, bot_id))
     ok = collector.queue_post(offer_id, bot_id, telegram=target in ("both", "telegram"),
                               whatsapp_too=target in ("both", "whatsapp"), admin_id=admin.id, ip=client_ip(request))
     if ok:
@@ -770,6 +799,9 @@ def offers_settings(request: Request, admin: AdminUser = Depends(current_admin),
                   shopee_mask=settings_service.mask(values.get("shopee_secret", "")),
                   amazon_mask=settings_service.mask(values.get("amazon_secret", "")),
                   amazon_versions=amazon.VERSIONS,
+                  tiktok_mask=settings_service.mask(values.get("tiktok_app_secret", "")),
+                  tiktok_connected=bool(values.get("tiktok_refresh_token")),
+                  tiktok_callback=str(request.base_url).rstrip("/") + "/admin/offers/tiktok/callback",
                   test_results=request.session.pop("offers_test", None),
                   worker_online=alert_service.bot_online(values, key=OFFERS_HEARTBEAT),
                   sales_bot=settings.telegram_bot_username)
@@ -783,8 +815,23 @@ def offers_settings_save(request: Request, store: str = Form("mercadolivre"),
                          amazon_secret: str = Form("", max_length=256),
                          amazon_partner_tag: str = Form("", max_length=64),
                          amazon_version: str = Form("3.1", max_length=8),
+                         tiktok_app_key: str = Form("", max_length=64), tiktok_app_secret: str = Form("", max_length=128),
+                         tiktok_auth_url: str = Form("", max_length=500),
                          _csrf: None = Depends(verify_csrf), admin: AdminUser = Depends(require_superuser),
                          db: Session = Depends(get_db)):
+    if store == "tiktok":
+        auth_url = tiktok_auth_url.strip()
+        if auth_url and not auth_url.startswith("https://"):
+            flash(request, "O link de autorização precisa começar com https:// (copie do Partner Center).", "error")
+            return redirect("/admin/offers/settings")
+        values = {"tiktok_app_key": tiktok_app_key.strip(), "tiktok_auth_url": auth_url}
+        if tiktok_app_secret.strip():
+            values["tiktok_app_secret"] = tiktok_app_secret.strip()
+        settings_service.set_values(db, values, admin.id)
+        audit(db, request, admin, "store_credentials_saved", store=store, secret_changed=bool(tiktok_app_secret.strip()))
+        db.commit()
+        flash(request, "App do TikTok Shop salvo. Agora clique em “Conectar conta de criador”.")
+        return redirect("/admin/offers/settings")
     if store == "amazon":
         tag = amazon_partner_tag.strip()
         if tag and not amazon.valid_tag(tag):
@@ -818,10 +865,71 @@ def offers_settings_save(request: Request, store: str = Form("mercadolivre"),
     return redirect("/admin/offers/settings")
 
 
+# --------------------------------------------------------------------------- #
+# TikTok Shop: conectar a conta de criador (OAuth)
+# --------------------------------------------------------------------------- #
+@router.get("/offers/tiktok/connect")
+def tiktok_connect(request: Request, admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
+    values = settings_service.get_all(db)
+    if not (values.get("tiktok_app_key") and values.get("tiktok_app_secret") and values.get("tiktok_auth_url")):
+        flash(request, "Preencha o App Key, o App Secret e o link de autorização do TikTok Shop e salve.", "error")
+        return redirect("/admin/offers/settings")
+    state = secrets.token_urlsafe(24)
+    request.session["tiktok_state"] = state
+    return redirect(tiktok.auth_link(values["tiktok_auth_url"], state))
+
+
+def _tiktok_exchange(request: Request, admin: AdminUser, db: Session, code: str) -> None:
+    values = settings_service.get_all(db)
+    try:
+        tokens = tiktok.exchange_code(values.get("tiktok_app_key", ""), values.get("tiktok_app_secret", ""), code,
+                                      transport=tiktok_transport)
+    except TikTokError as exc:
+        flash(request, str(exc), "error")
+        return
+    bot_service.save_tiktok_tokens(db, tokens, admin.id)
+    audit(db, request, admin, "tiktok_connected")
+    db.commit()
+    who = f" ({tokens['name']})" if tokens.get("name") else ""
+    flash(request, f"Conta do TikTok Shop conectada{who}. Ligue o TikTok Shop na aba Busca e filtros de cada bot.")
+
+
+@router.get("/offers/tiktok/callback")
+def tiktok_callback(request: Request, code: str = "", state: str = "", admin: AdminUser = Depends(require_superuser),
+                    db: Session = Depends(get_db)):
+    expected = request.session.pop("tiktok_state", None)
+    if not code or not expected or not secrets.compare_digest(expected, state):
+        flash(request, "Autorização do TikTok inválida ou expirada. Clique em “Conectar” de novo.", "error")
+        return redirect("/admin/offers/settings")
+    _tiktok_exchange(request, admin, db, code)
+    return redirect("/admin/offers/settings")
+
+
+@router.post("/offers/tiktok/code")
+def tiktok_code(request: Request, code: str = Form(..., max_length=500), _csrf: None = Depends(verify_csrf),
+                admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
+    """Plano B: colar o código (ou o endereço inteiro) que o TikTok mostrou depois de autorizar."""
+    m = re.search(r"[?&]code=([^&#\s]+)", code)
+    _tiktok_exchange(request, admin, db, m.group(1) if m else code.strip())
+    return redirect("/admin/offers/settings")
+
+
+@router.post("/offers/tiktok/disconnect")
+def tiktok_disconnect(request: Request, _csrf: None = Depends(verify_csrf),
+                      admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
+    settings_service.set_values(db, {"tiktok_access_token": "", "tiktok_refresh_token": "",
+                                     "tiktok_access_expires": "", "tiktok_creator": ""}, admin.id)
+    audit(db, request, admin, "tiktok_disconnected")
+    db.commit()
+    flash(request, "Conta do TikTok Shop desconectada.")
+    return redirect("/admin/offers/settings")
+
+
 @router.post("/offers/settings/test")
 def offers_settings_test(request: Request, store: str = Form("mercadolivre"), _csrf: None = Depends(verify_csrf),
                          admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
     values = settings_service.get_all(db)
     cfg = offer_config.parse({}, **bot_service.store_kwargs(values))
-    request.session["offers_test"] = _test_stores(cfg, store == "mercadolivre", store == "shopee", store == "amazon")
+    request.session["offers_test"] = _test_stores(cfg, store == "mercadolivre", store == "shopee", store == "amazon",
+                                                  store == "tiktok")
     return redirect("/admin/offers/settings")

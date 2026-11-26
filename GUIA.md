@@ -119,6 +119,8 @@ Você pode ter **quantos bots de ofertas quiser**. Cada um tem o próprio bot do
 - **Shopee:** em https://affiliate.shopee.com.br → **Open API**, copie o **AppID** e a **Senha** → cole no painel → **Salvar** → **Testar**. Na Shopee o **link de afiliado vem pronto** da API, já com a sua comissão.
 - **Amazon:** em https://associados.amazon.com.br → **Ferramentas → Creators API → Criar credencial**, copie o **Credential ID**, o **Credential Secret** e a **versão**; o **Partner Tag** é o seu ID de associado (termina em `-20`) → **Salvar** → **Testar**. O link de afiliado também vem pronto. A Amazon só libera a API para associados com vendas qualificadas recentes.
 
+- **TikTok Shop:** em https://partner.tiktokshop.com crie um app com as permissões de **afiliado / criador**, cadastre o endereço de retorno que o painel mostra (precisa de **https**, com domínio), copie o **App Key**, o **App Secret** e o **link de autorização** → **Salvar** → **Conectar conta de criador** e autorize com a sua conta de criador afiliado. O acesso é renovado sozinho. A API de afiliado do TikTok está em beta e o suporte ao Brasil ainda não está confirmado: o **Testar** mostra a resposta real para a sua conta.
+
 **Para cada bot de ofertas:**
 1. Painel → **Central dos bots** → digite o nome em **Novo bot de promoção** → **Criar bot**. (Dica: na aba *Geral* do bot novo, use **Copiar configuração** de um bot que já funciona.)
 2. Aba **Telegram**:
@@ -134,6 +136,18 @@ Você pode ter **quantos bots de ofertas quiser**. Cada um tem o próprio bot do
 
 - **Modo automático:** publica sozinho.
 - **Modo manual:** as ofertas ficam em **Ofertas → Aguardando** para você aprovar.
+
+**Escolha e medição** (aba *Busca e filtros*):
+- **Ordem de publicação:** “Maior desconto primeiro” (como sempre foi) ou **“Pontuação”**, que soma desconto, comissão, nota e vendas — tende a dar mais comissão por post. Teste em um bot e compare.
+- **Medir por grupo e horário (Shopee):** o link de afiliado sai com marcações (`bot3`, `tg`/`wa`, `h20`). No relatório de conversões da Shopee você vê quanto cada bot, canal e horário vendeu. A comissão não muda.
+- **Mercado Livre só com o meu link de afiliado** (ligado por padrão): oferta do Mercado Livre sem o seu `meli.la` fica em *Aguardando* em vez de sair sozinha. O painel também não publica sem ele.
+
+**Novos marcadores do post:** `{prova}` (ex.: “⭐ 4,8 · +1,5 mil vendidos”, quando a loja informa) e `{hora}` (hora em que o preço foi lido). Exemplo de linhas para acrescentar ao modelo:
+```
+{prova}
+_Preço das {hora}, pode mudar · link de afiliado_
+```
+Linhas cujo marcador está vazio somem sozinhas.
 
 **Detector de desconto falso** (aba *Busca e filtros*, ligado por padrão): o sistema guarda o preço de cada produto todo dia. Se a loja anuncia “50% OFF”, mas o preço “com desconto” é o mesmo que ela já cobrava nos últimos dias (o “De” foi inflado), a oferta ganha o aviso **Desconto suspeito** e o bot **não a publica sozinho**. Ela continua na lista e você pode publicar manualmente se quiser. O detector precisa de alguns dias de histórico de cada produto para começar a julgar.
 

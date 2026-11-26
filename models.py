@@ -620,6 +620,10 @@ class PromoOffer(AccountScoped, TimestampMixin, Base):
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     # Detector de desconto falso: motivo quando o "De" parece inflado (None = desconto parece real)
     price_note: Mapped[str | None] = mapped_column(String(200))
+    # Dados da loja usados na pontuação e na prova social do post (quando a loja informa)
+    commission_rate: Mapped[Decimal | None] = mapped_column(Numeric(6, 4))   # 0.0800 = 8%
+    rating: Mapped[Decimal | None] = mapped_column(Numeric(3, 2))            # 4.80
+    sold: Mapped[int | None] = mapped_column(Integer)                         # unidades vendidas
 
     posts: Mapped[list[OfferPost]] = relationship(back_populates="offer", cascade="all, delete-orphan")
 
