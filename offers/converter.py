@@ -18,6 +18,7 @@ from urllib.parse import urljoin, urlsplit
 
 import httpx
 
+from core import tenancy
 from core.audit import log_event, utcnow
 from database import session_scope
 from models import OfferBot, OfferStatus
@@ -164,7 +165,16 @@ class Preview:
     has_whatsapp: bool = False
 
 
-def import_link(bot_id: int, text: str, *, client_factory: ClientFactory = default_client_factory,
+def import_link(bot_id: int, text: str, **kwargs) -> Preview:
+    """Lê o produto do link e prepara o post NESTE bot — sempre dentro da conta dona do bot."""
+    with session_scope() as session:
+        bot = session.get(OfferBot, bot_id)
+        account_id = bot.account_id if bot is not None else tenancy.current_account_id()
+    with tenancy.use_account(account_id):
+        return _import_link(bot_id, text, **kwargs)
+
+
+def _import_link(bot_id: int, text: str, *, client_factory: ClientFactory = default_client_factory,
                 shopee_factory: ShopeeFactory = default_shopee_factory,
                 amazon_factory: AmazonFactory = default_amazon_factory,
                 transport: httpx.BaseTransport | None = None, admin_telegram_id: int | None = None) -> Preview:

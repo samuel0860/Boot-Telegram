@@ -33,6 +33,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from core.tenancy import AccountScoped, inherit_from
 from database import Base
 
 MONEY = Numeric(12, 2)
@@ -122,11 +123,41 @@ plan_products = Table(
 # --------------------------------------------------------------------------- #
 # Tabelas
 # --------------------------------------------------------------------------- #
-class User(TimestampMixin, Base):
+class AccountStatus(str, enum.Enum):
+    ACTIVE = "active"          # pagando (ou em teste)
+    SUSPENDED = "suspended"    # pagamento atrasado / suspensa pela plataforma: não entra e os bots param
+    CANCELED = "canceled"      # assinatura cancelada/reembolsada
+
+
+class Account(TimestampMixin, Base):
+    """Um CLIENTE da plataforma (quem comprou na Kiwify). Tudo o que ele cadastra pertence a esta conta."""
+
+    __tablename__ = "accounts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(120), nullable=False)
+    email: Mapped[str | None] = mapped_column(String(255), index=True)
+    plan: Mapped[str] = mapped_column(String(32), nullable=False, server_default="pro")
+    status: Mapped[AccountStatus] = mapped_column(
+        _enum(AccountStatus, "account_status"), nullable=False, default=AccountStatus.ACTIVE,
+        server_default=AccountStatus.ACTIVE.value)
+    is_platform: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    # Kiwify (assinatura que mantém a conta ativa)
+    kiwify_subscription_id: Mapped[str | None] = mapped_column(String(80), index=True)
+    kiwify_order_id: Mapped[str | None] = mapped_column(String(80))
+    paid_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    notes: Mapped[str | None] = mapped_column(Text)
+
+    @property
+    def is_active(self) -> bool:
+        return self.status == AccountStatus.ACTIVE
+
+
+class User(AccountScoped, TimestampMixin, Base):
     __tablename__ = "users"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
-    telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, nullable=False)
+    telegram_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     username: Mapped[str | None] = mapped_column(String(64))
     first_name: Mapped[str | None] = mapped_column(String(128))
     last_name: Mapped[str | None] = mapped_column(String(128))
@@ -139,6 +170,7 @@ class User(TimestampMixin, Base):
     subscriptions: Mapped[list[Subscription]] = relationship(back_populates="user")
 
     __table_args__ = (
+        UniqueConstraint("account_id", "telegram_id", name="uq_users_account_telegram"),
         Index("ix_users_username", "username"),
         Index("ix_users_created_at", "created_at"),
     )
@@ -151,20 +183,22 @@ class User(TimestampMixin, Base):
         return name or str(self.telegram_id)
 
 
-class Category(TimestampMixin, Base):
+class Category(AccountScoped, TimestampMixin, Base):
     __tablename__ = "categories"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    slug: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     sort_order: Mapped[int] = mapped_column(Integer, nullable=False, server_default=text("0"))
     is_active: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("true"))
 
     products: Mapped[list[Product]] = relationship(back_populates="category", order_by="Product.sort_order")
 
+    __table_args__ = (UniqueConstraint("account_id", "slug", name="uq_categories_account_slug"),)
 
-class Product(TimestampMixin, Base):
+
+class Product(AccountScoped, TimestampMixin, Base):
     """Produto / pack / conteúdo entregue após o pagamento."""
 
     __tablename__ = "products"
@@ -174,7 +208,7 @@ class Product(TimestampMixin, Base):
         ForeignKey("categories.id", ondelete="SET NULL")
     )
     name: Mapped[str] = mapped_column(String(150), nullable=False)
-    slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    slug: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)  # descrição pública (mostrada antes da compra)
     content_type: Mapped[ContentType] = mapped_column(_enum(ContentType, "content_type"), nullable=False)
     content_value: Mapped[str] = mapped_column(Text, nullable=False)  # conteúdo privado
@@ -185,19 +219,20 @@ class Product(TimestampMixin, Base):
     plans: Mapped[list[Plan]] = relationship(secondary=plan_products, back_populates="products")
 
     __table_args__ = (
+        UniqueConstraint("account_id", "slug", name="uq_products_account_slug"),
         Index("ix_products_category_id_sort_order", "category_id", "sort_order"),
         Index("ix_products_content_type_content_value", "content_type", "content_value"),
     )
 
 
-class Plan(TimestampMixin, Base):
+class Plan(AccountScoped, TimestampMixin, Base):
     """Plano / oferta exibida no bot."""
 
     __tablename__ = "plans"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(100), nullable=False)
-    slug: Mapped[str] = mapped_column(String(100), unique=True, nullable=False)
+    slug: Mapped[str] = mapped_column(String(100), nullable=False)
     description: Mapped[str | None] = mapped_column(Text)
     price: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
     currency: Mapped[str] = mapped_column(String(3), nullable=False, server_default=text("'BRL'"))
@@ -212,6 +247,7 @@ class Plan(TimestampMixin, Base):
     )
 
     __table_args__ = (
+        UniqueConstraint("account_id", "slug", name="uq_plans_account_slug"),
         CheckConstraint("price > 0", name="price_positive"),
         CheckConstraint("duration_days IS NULL OR duration_days > 0", name="duration_positive"),
         CheckConstraint(
@@ -233,7 +269,7 @@ class Plan(TimestampMixin, Base):
         return f"{self.duration_days} dias"
 
 
-class Order(TimestampMixin, Base):
+class Order(AccountScoped, TimestampMixin, Base):
     __tablename__ = "orders"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -286,13 +322,13 @@ class Order(TimestampMixin, Base):
     )
 
 
-class Coupon(TimestampMixin, Base):
+class Coupon(AccountScoped, TimestampMixin, Base):
     """Cupom de desconto para os planos vendidos no bot (PIX)."""
 
     __tablename__ = "coupons"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    code: Mapped[str] = mapped_column(String(32), unique=True, nullable=False)  # sempre MAIÚSCULO
+    code: Mapped[str] = mapped_column(String(32), nullable=False)  # sempre MAIÚSCULO (único por conta)
     percent_off: Mapped[int] = mapped_column(Integer, nullable=False)
     # NULL = vale para todos os planos
     plan_id: Mapped[int | None] = mapped_column(ForeignKey("plans.id", ondelete="CASCADE"))
@@ -304,12 +340,13 @@ class Coupon(TimestampMixin, Base):
     plan: Mapped[Plan | None] = relationship()
 
     __table_args__ = (
+        UniqueConstraint("account_id", "code", name="uq_coupons_account_code"),
         CheckConstraint("percent_off BETWEEN 1 AND 90", name="percent_range"),
         CheckConstraint("max_uses IS NULL OR max_uses > 0", name="max_uses_positive"),
     )
 
 
-class Payment(TimestampMixin, Base):
+class Payment(AccountScoped, TimestampMixin, Base):
     __tablename__ = "payments"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -341,7 +378,7 @@ class Payment(TimestampMixin, Base):
     )
 
 
-class Subscription(TimestampMixin, Base):
+class Subscription(AccountScoped, TimestampMixin, Base):
     __tablename__ = "subscriptions"
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -380,11 +417,13 @@ class Subscription(TimestampMixin, Base):
         )
 
 
-class AccessLog(Base):
+class AccessLog(AccountScoped, Base):
     """Histórico de liberações, acessos e ações administrativas."""
 
     __tablename__ = "access_logs"
 
+    account_id: Mapped[int | None] = mapped_column(  # type: ignore[assignment]
+        Integer, ForeignKey("accounts.id", ondelete="CASCADE"), index=True)   # NULL = evento da plataforma
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
     admin_user_id: Mapped[int | None] = mapped_column(ForeignKey("admin_users.id", ondelete="SET NULL"))
@@ -408,11 +447,13 @@ class AccessLog(Base):
     )
 
 
-class WebhookEvent(Base):
+class WebhookEvent(AccountScoped, Base):
     """Eventos recebidos dos provedores (auditoria + idempotência)."""
 
     __tablename__ = "webhook_events"
 
+    account_id: Mapped[int | None] = mapped_column(  # type: ignore[assignment]
+        Integer, ForeignKey("accounts.id", ondelete="CASCADE"), index=True)   # NULL = evento da plataforma
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
     provider: Mapped[str] = mapped_column(String(32), nullable=False)
     event_key: Mapped[str] = mapped_column(String(128), nullable=False)
@@ -438,7 +479,7 @@ class WebhookEvent(Base):
     )
 
 
-class AdminUser(TimestampMixin, Base):
+class AdminUser(AccountScoped, TimestampMixin, Base):
     __tablename__ = "admin_users"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -459,15 +500,29 @@ class AdminUser(TimestampMixin, Base):
 # --------------------------------------------------------------------------- #
 # Configurações editáveis pelo painel + bot de promoções (Mercado Livre)
 # --------------------------------------------------------------------------- #
-class AppSetting(Base):
+class AppSetting(AccountScoped, Base):
     """Configurações chave/valor editadas no painel. Segredos ficam criptografados."""
 
     __tablename__ = "app_settings"
 
+    account_id: Mapped[int] = mapped_column(  # type: ignore[assignment]
+        Integer, ForeignKey("accounts.id", ondelete="CASCADE"), primary_key=True)
     key: Mapped[str] = mapped_column(String(64), primary_key=True)
     value: Mapped[str | None] = mapped_column(Text)
     is_secret: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
     updated_by_admin_id: Mapped[int | None] = mapped_column(ForeignKey("admin_users.id", ondelete="SET NULL"))
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
+    )
+
+
+class PlatformSetting(Base):
+    """Valores da PLATAFORMA, fora de qualquer conta (ex.: sinal de vida dos processos)."""
+
+    __tablename__ = "platform_settings"
+
+    key: Mapped[str] = mapped_column(String(64), primary_key=True)
+    value: Mapped[str | None] = mapped_column(Text)
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), onupdate=func.now(), nullable=False
     )
@@ -494,7 +549,7 @@ class TargetChannel(str, enum.Enum):
     WHATSAPP = "whatsapp"    # grupo do WhatsApp (target_id = ...@g.us)
 
 
-class OfferBot(TimestampMixin, Base):
+class OfferBot(AccountScoped, TimestampMixin, Base):
     """MÓDULO DE OFERTAS: um bot que alimenta os SEUS grupos/canais de ofertas.
 
     Cada bot tem o próprio token do Telegram (criado no @BotFather), o próprio
@@ -519,7 +574,7 @@ class OfferBot(TimestampMixin, Base):
         back_populates="bot", cascade="all, delete-orphan", order_by="OfferTarget.id")
 
 
-class OfferTarget(Base):
+class OfferTarget(AccountScoped, Base):
     """Destino de um bot de ofertas: canal/grupo do Telegram ou grupo do WhatsApp."""
 
     __tablename__ = "offer_bot_targets"
@@ -539,7 +594,7 @@ class OfferTarget(Base):
     )
 
 
-class PromoOffer(TimestampMixin, Base):
+class PromoOffer(AccountScoped, TimestampMixin, Base):
     """Produto coletado no Mercado Livre (compartilhado pelos bots de ofertas).
 
     O que cada bot fez com a oferta (fila, publicação, WhatsApp) fica em OfferPost.
@@ -569,7 +624,7 @@ class PromoOffer(TimestampMixin, Base):
     posts: Mapped[list[OfferPost]] = relationship(back_populates="offer", cascade="all, delete-orphan")
 
     __table_args__ = (
-        UniqueConstraint("platform", "external_id", name="uq_promo_offers_platform_external_id"),
+        UniqueConstraint("account_id", "platform", "external_id", name="uq_promo_offers_account_platform_external"),
         CheckConstraint("price > 0", name="price_positive"),
     )
 
@@ -578,7 +633,7 @@ class PromoOffer(TimestampMixin, Base):
         return self.affiliate_url or self.product_url
 
 
-class PriceHistory(Base):
+class PriceHistory(AccountScoped, Base):
     """Preço visto de cada oferta (no máximo um registro por dia, ou quando o preço muda)."""
 
     __tablename__ = "promo_price_history"
@@ -592,7 +647,7 @@ class PriceHistory(Base):
     __table_args__ = (Index("ix_promo_price_history_offer_id_seen_at", "offer_id", "seen_at"),)
 
 
-class OfferPost(TimestampMixin, Base):
+class OfferPost(AccountScoped, TimestampMixin, Base):
     """O que UM bot de ofertas fez com UMA oferta: aprovação, fila, envio ao Telegram e ao WhatsApp."""
 
     __tablename__ = "offer_posts"
@@ -624,3 +679,14 @@ class OfferPost(TimestampMixin, Base):
         Index("ix_offer_posts_bot_id_wa_status_wa_queued_at", "bot_id", "wa_status", "wa_queued_at"),
         Index("ix_offer_posts_bot_id_wa_sent_at", "bot_id", "wa_sent_at"),
     )
+
+
+# Registros novos sem conta da vez herdam a conta do "pai"
+inherit_from("Order", ("user_id", "User"), ("plan_id", "Plan"))
+inherit_from("Payment", ("order_id", "Order"))
+inherit_from("Subscription", ("order_id", "Order"), ("user_id", "User"))
+inherit_from("Product", ("category_id", "Category"))
+inherit_from("AccessLog", ("user_id", "User"), ("order_id", "Order"), ("admin_user_id", "AdminUser"))
+inherit_from("OfferTarget", ("bot_id", "OfferBot"))
+inherit_from("OfferPost", ("bot_id", "OfferBot"), ("offer_id", "PromoOffer"))
+inherit_from("PriceHistory", ("offer_id", "PromoOffer"))

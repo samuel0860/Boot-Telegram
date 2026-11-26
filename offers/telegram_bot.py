@@ -21,17 +21,18 @@ from telegram.ext import (
     CommandHandler,
     ContextTypes,
     MessageHandler,
+    TypeHandler,
     filters,
 )
 
-from core import alert_service
+from core import alert_service, tenancy
 from database import session_scope
 from models import OfferBot
 from offers import bots as bot_service
 from offers import collector, converter, whatsapp
 
 logger = logging.getLogger("offers.bot")
-_ADMIN_CACHE: dict[str, object] = {"ids": set(), "at": 0.0}
+_ADMIN_CACHE: dict[int | None, tuple[float, set[int]]] = {}
 
 
 async def run_db(func, *args, **kwargs):
@@ -43,10 +44,18 @@ def bot_id_of(context: ContextTypes.DEFAULT_TYPE) -> int:
 
 
 async def admin_ids(force: bool = False) -> set[int]:
-    if force or time.monotonic() - float(_ADMIN_CACHE["at"]) > 30:
-        _ADMIN_CACHE["ids"] = await run_db(alert_service.admin_ids)
-        _ADMIN_CACHE["at"] = time.monotonic()
-    return _ADMIN_CACHE["ids"]  # type: ignore[return-value]
+    """Administradores (no Telegram) da CONTA dona deste bot — cache curto por conta."""
+    account = tenancy.current_account_id()
+    cached = _ADMIN_CACHE.get(account)
+    if force or cached is None or time.monotonic() - cached[0] > 30:
+        cached = (time.monotonic(), await run_db(alert_service.admin_ids))
+        _ADMIN_CACHE[account] = cached
+    return cached[1]
+
+
+async def _enter_account(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Primeiro handler de toda atualização: tudo o que o bot fizer vale para a conta dona dele."""
+    tenancy.set_account(context.application.bot_data.get("account_id"))
 
 
 async def is_admin(update: Update) -> bool:
@@ -236,9 +245,11 @@ async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
                  exc_info=context.error)
 
 
-def build_application(token: str, bot_id: int) -> Application:
+def build_application(token: str, bot_id: int, account_id: int | None = None) -> Application:
     app = ApplicationBuilder().token(token).job_queue(None).build()
     app.bot_data["offer_bot_id"] = bot_id
+    app.bot_data["account_id"] = account_id
+    app.add_handler(TypeHandler(object, _enter_account), group=-100)
     private = filters.ChatType.PRIVATE
     app.add_handler(CommandHandler("start", cmd_start, filters=private))
     app.add_handler(CommandHandler("id", cmd_id, filters=private))

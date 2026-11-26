@@ -210,7 +210,7 @@ def test_panel_shopee_credentials_and_bot_sources(panel):
                                                "shopee_app_id": APP_ID, "shopee_secret": SECRET})
     assert "Credenciais da Shopee salvas" in r.text and SECRET not in r.text
     with session_scope() as s:
-        row = s.get(AppSetting, "shopee_secret")
+        row = s.get(AppSetting, (1, "shopee_secret"))
         assert row.is_secret and SECRET not in row.value
     r = c.post("/admin/offers/settings/test", data={"csrf_token": _tok(c, "/admin/offers/settings"),
                                                     "store": "shopee"})

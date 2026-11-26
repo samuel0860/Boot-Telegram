@@ -11,9 +11,11 @@ from sqlalchemy import and_, func, select
 from sqlalchemy.orm import Session
 
 from config import settings
+from core import tenancy
 from core.audit import log_event, utcnow
+from core.tenancy import ALL_ACCOUNTS
 from database import get_db
-from models import AccessLog, AdminUser
+from models import AccessLog, Account, AdminUser
 
 _hasher = PasswordHasher()  # Argon2id com parâmetros recomendados
 # Hash fixo usado quando o usuário não existe (tempo de resposta uniforme).
@@ -115,6 +117,12 @@ def authenticate(session: Session, username: str, password: str, ip: str | None)
         session.commit()
         return None, "Usuário ou senha inválidos."
 
+    account = session.get(Account, admin.account_id)
+    if account is None or not account.is_active:
+        session.commit()
+        return None, ("Esta conta está suspensa ou cancelada. Verifique a sua assinatura "
+                      "(ou fale com o suporte).")
+
     if _hasher.check_needs_rehash(admin.password_hash):
         admin.password_hash = _hasher.hash(password)
     if admin.totp_enabled:
@@ -135,6 +143,7 @@ def complete_login(session: Session, admin: AdminUser, ip: str | None) -> None:
 def login_session(request: Request, admin: AdminUser) -> None:
     request.session.clear()
     request.session["admin_id"] = admin.id
+    request.session["account_id"] = admin.account_id
     request.session["csrf"] = secrets.token_urlsafe(32)
 
 
@@ -153,13 +162,30 @@ def verify_csrf(request: Request, csrf_token: str = Form("")) -> None:
 
 
 def current_admin(request: Request, db: Session = Depends(get_db)) -> AdminUser:
+    """Administrador logado. A sessão guarda também a conta (cliente) em uso: o middleware
+    aplica o filtro dessa conta em todas as consultas (core/tenancy.py)."""
     admin_id = request.session.get("admin_id")
+    account_id = request.session.get("account_id")
     if not admin_id:
         raise NotAuthenticated()
-    admin = db.get(AdminUser, admin_id)
+    if not account_id:        # sessão de antes das contas: pede login de novo
+        request.session.clear()
+        raise NotAuthenticated()
+    admin = db.get(AdminUser, admin_id, execution_options={ALL_ACCOUNTS: True})
     if admin is None or not admin.is_active:
         request.session.clear()
         raise NotAuthenticated()
+    own = db.get(Account, admin.account_id)
+    if own is None or not own.is_active:
+        request.session.clear()
+        raise NotAuthenticated()
+    if account_id != admin.account_id:
+        # só a equipe da plataforma pode "entrar" na conta de um cliente (suporte)
+        if not own.is_platform or db.get(Account, account_id) is None:
+            request.session.clear()
+            raise NotAuthenticated()
+    if tenancy.current_account_id() != account_id:
+        raise NotAuthenticated()   # o filtro de conta não está ativo nesta requisição: não arrisca
     return admin
 
 

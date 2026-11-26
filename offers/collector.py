@@ -19,6 +19,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import func, select, true
 from sqlalchemy.orm import Session
 
+from core import tenancy
 from core.audit import log_event, utcnow
 from database import session_scope
 from models import OfferBot, OfferPost, OfferStatus, PromoOffer, TargetChannel, WaStatus
@@ -273,12 +274,23 @@ def run_cycle(bot_id: int, client_factory: ClientFactory = default_client_factor
 
     Nunca lança exceção: erros vão em result.errors.
     """
+    with session_scope() as session:
+        bot = session.get(OfferBot, bot_id)
+        account_id = bot.account_id if bot is not None else None
+    if account_id is None:
+        result = CycleResult()
+        result.errors.append("bot não encontrado")
+        return result
+    with tenancy.use_account(account_id):     # tudo o que o ciclo gravar pertence à conta do bot
+        return _run_cycle(bot_id, client_factory, shopee_factory=shopee_factory, amazon_factory=amazon_factory,
+                          triggered_by=triggered_by)
+
+
+def _run_cycle(bot_id: int, client_factory: ClientFactory, *, shopee_factory: ShopeeFactory,
+               amazon_factory: AmazonFactory, triggered_by: str) -> CycleResult:
     result = CycleResult()
     with session_scope() as session:
         bot = session.get(OfferBot, bot_id)
-        if bot is None:
-            result.errors.append("bot não encontrado")
-            return result
         cfg = bot_service.config_for(session, bot)
     for store in cfg.missing_credentials():
         result.errors.append(MISSING_MSG[store])

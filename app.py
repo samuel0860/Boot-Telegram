@@ -18,8 +18,9 @@ from starlette.middleware.sessions import SessionMiddleware
 
 from admin.auth import NotAuthenticated
 from admin.routes import router as admin_router
+from admin.tenant_middleware import AccountMiddleware
 from config import BASE_DIR, configure_logging, settings
-from core import error_reporter
+from core import error_reporter, tenancy
 from database import check_connection
 from sales import payment_service
 from sales.payments import PaymentClient, get_payment_client
@@ -43,6 +44,8 @@ app = FastAPI(
     openapi_url=None if settings.is_production else "/openapi.json",
 )
 
+# A ordem importa: o AccountMiddleware precisa ficar DENTRO do SessionMiddleware
+app.add_middleware(AccountMiddleware)
 app.add_middleware(
     SessionMiddleware,
     secret_key=settings.secret_key,
@@ -119,9 +122,11 @@ async def mercadopago_webhook(request: Request, client: PaymentClient = Depends(
         return PlainTextResponse("payload too large", status_code=413)
     headers = {k.lower(): v for k, v in request.headers.items()}
     query = dict(request.query_params)
-    result = await run_in_threadpool(
-        payment_service.handle_mercadopago_webhook, headers=headers, query=query, body=body, client=client
-    )
+    # O Mercado Pago configurado no .env é o da conta principal (por conta vem numa etapa seguinte)
+    with tenancy.use_account(tenancy.PRIMARY_ACCOUNT_ID):
+        result = await run_in_threadpool(
+            payment_service.handle_mercadopago_webhook, headers=headers, query=query, body=body, client=client
+        )
     return PlainTextResponse(result.message, status_code=result.status_code)
 
 

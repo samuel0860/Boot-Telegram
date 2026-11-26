@@ -1,0 +1,74 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import csrf, page_header, help with context %}
+{% from "admin/_icons.html" import icon with context %}
+{% block title %}Clientes{% endblock %}
+{% block content %}
+{% call page_header('Clientes da plataforma', 'Quem assina o sistema. Cada cliente tem o próprio painel, bots, lojas e dados — um não vê o do outro.') %}{% endcall %}
+
+{% if new_password %}
+<div class="card credential-card">
+  <div class="card-header"><div class="card-icon">{{ icon('key') }}</div>
+    <div><h2>Acesso de “{{ new_password.name }}”</h2>
+      <p>Envie estes dados para o cliente. A senha aparece <b>só agora</b>; no primeiro acesso ele pode trocá-la em Minha conta.</p></div></div>
+  <dl class="credential">
+    <div><dt>Endereço</dt><dd><code>{{ request.base_url }}admin/</code></dd></div>
+    <div><dt>Usuário</dt><dd><code>{{ new_password.email }}</code></dd></div>
+    <div><dt>Senha provisória</dt><dd><code>{{ new_password.password }}</code></dd></div>
+  </dl>
+</div>
+{% endif %}
+
+<div class="kpis">
+  <div class="kpi"><div class="kpi-top"><span class="kpi-label">Clientes ativos</span><span class="kpi-icon ok">{{ icon('users') }}</span></div>
+    <span class="kpi-value">{{ stats.active }} <small class="kpi-of">de {{ stats.total }}</small></span><span class="kpi-sub">contas de clientes</span></div>
+  <div class="kpi"><div class="kpi-top"><span class="kpi-label">Receita mensal estimada {{ help('Soma do preço de tabela dos planos das contas ativas. O valor real recebido está na Kiwify.') }}</span><span class="kpi-icon info">{{ icon('trending') }}</span></div>
+    <span class="kpi-value">R$ {{ stats.mrr }}</span><span class="kpi-sub">por mês</span></div>
+</div>
+
+<div class="table-wrap">
+  <table>
+    <thead><tr><th>Cliente</th><th>Plano</th><th>Situação</th><th class="num">Bots</th><th>Desde</th><th></th></tr></thead>
+    <tbody>
+    {% for a in accounts %}
+      <tr>
+        <td><b>{{ a.name }}</b>{% if a.is_platform %} <span class="badge badge-info">plataforma</span>{% endif %}<br><small class="muted-inline">{{ a.email or '—' }}</small></td>
+        <td>
+          {% if a.is_platform %}{{ plans[a.plan].name if a.plan in plans else a.plan }}{% else %}
+          <form method="post" action="/admin/platform/accounts/{{ a.id }}/plan" class="inline-form">{{ csrf() }}
+            <select name="plan" class="auto-submit" aria-label="Plano de {{ a.name }}">{% for k, p in plans.items() %}<option value="{{ k }}" {{ 'selected' if a.plan == k }}>{{ p.name }} · R$ {{ p.price }}</option>{% endfor %}</select>
+            <noscript><button class="btn btn-sm btn-secondary">Salvar</button></noscript>
+          </form>{% endif %}
+        </td>
+        <td>{% if a.status.value == 'active' %}<span class="badge badge-ok"><span class="dot"></span>Ativa</span>
+          {% elif a.status.value == 'suspended' %}<span class="badge badge-warn"><span class="dot"></span>Suspensa</span>
+          {% else %}<span class="badge badge-muted"><span class="dot"></span>Cancelada</span>{% endif %}</td>
+        <td class="num">{{ bots.get(a.id, 0) }}</td>
+        <td>{{ a.created_at|dt }}</td>
+        <td class="actions">
+          {% if not a.is_platform %}
+          <form method="post" action="/admin/platform/accounts/{{ a.id }}/enter">{{ csrf() }}<button class="btn btn-sm btn-secondary" title="Abre o painel deste cliente para dar suporte">{{ icon('external') }}Entrar</button></form>
+          <form method="post" action="/admin/platform/accounts/{{ a.id }}/status" data-confirm="{{ 'Suspender: o cliente não entra mais e os bots dele param. Continuar?' if a.is_active else 'Reativar esta conta?' }}">{{ csrf() }}
+            <input type="hidden" name="status" value="{{ 'suspended' if a.is_active else 'active' }}">
+            <button class="btn btn-sm {{ 'btn-ghost-danger' if a.is_active else '' }}">{{ icon('pause' if a.is_active else 'play') }}{{ 'Suspender' if a.is_active else 'Reativar' }}</button></form>
+          {% endif %}
+        </td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<section class="card mt-3">
+  <div class="card-header"><div class="card-icon">{{ icon('plus') }}</div>
+    <div><h2>Criar conta manualmente</h2>
+      <p>As vendas pela Kiwify criam a conta sozinhas. Use aqui para um teste grátis, um parceiro ou um cliente que pagou por fora.</p></div></div>
+  <form method="post" action="/admin/platform/accounts/create" class="form">{{ csrf() }}
+    <div class="grid2">
+      <label>Nome do cliente<input name="name" required maxlength="120" placeholder="Ex.: Loja da Maria"></label>
+      <label>E-mail (vira o login)<input name="email" type="email" required maxlength="255" placeholder="cliente@email.com"></label>
+      <label>Plano<select name="plan">{% for k, p in plans.items() %}<option value="{{ k }}" {{ 'selected' if k == 'pro' }}>{{ p.name }} · R$ {{ p.price }}/mês — {{ p.tagline }}</option>{% endfor %}</select></label>
+    </div>
+    <button class="btn">{{ icon('plus') }}Criar conta</button>
+  </form>
+</section>
+{% endblock %}

@@ -20,10 +20,11 @@ from admin.views import (
     funnel,
     history,
     offers,
+    platform,
     pwa,
     sales,
 )
 
 router = APIRouter(prefix="/admin", include_in_schema=False)
-for _module in (pwa, auth_views, dashboard, sales, funnel, coupons, catalog, history, accounts, offers):
+for _module in (pwa, auth_views, dashboard, sales, funnel, coupons, catalog, history, accounts, offers, platform):
     router.include_router(_module.router)

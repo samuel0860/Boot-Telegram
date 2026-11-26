@@ -18,15 +18,16 @@ import logging
 import time
 from dataclasses import dataclass, field
 
+from sqlalchemy import select
 from telegram import Bot, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.error import Forbidden, RetryAfter, TelegramError
 from telegram.ext import Application
 
-from core import alert_service, error_reporter, settings_service
+from core import alert_service, error_reporter, settings_service, tenancy
 from core.alert_service import OFFERS_HEARTBEAT
 from database import session_scope
-from models import OfferBot, TargetChannel
+from models import Account, AccountStatus, OfferBot, TargetChannel
 from offers import alerts as offer_alerts
 from offers import bots as bot_service
 from offers import collector, posting, telegram_bot, whatsapp
@@ -90,6 +91,7 @@ async def publish_next(bot_id: int, tg: Bot) -> bool:
 @dataclass
 class BotRuntime:
     bot_id: int
+    account_id: int | None = None
     app: Application | None = None
     token_hash: str = ""
     cycle_running: bool = False
@@ -109,6 +111,7 @@ class OffersRuntime:
     # ---- Telegram: um Application (polling) por token
     async def _start_app(self, rt: BotRuntime, token: str) -> None:
         app = self.app_factory(token, rt.bot_id)
+        app.bot_data["account_id"] = rt.account_id   # tudo o que este bot fizer vale para a conta dona dele
         await app.initialize()
         await app.start()
         await app.updater.start_polling(allowed_updates=["message", "callback_query", "my_chat_member",
@@ -133,7 +136,9 @@ class OffersRuntime:
         """Lê os bots do banco e liga/desliga o Telegram de cada um."""
         def _load():
             with session_scope() as session:
-                bots = bot_service.list_bots(session)
+                # bots de contas suspensas/canceladas param (o Telegram deles também é desligado)
+                active = set(session.scalars(select(Account.id).where(Account.status == AccountStatus.ACTIVE)))
+                bots = [b for b in bot_service.list_bots(session) if b.account_id in active]
                 for b in bots:
                     _ = list(b.targets)  # carrega os destinos antes de fechar a sessão
                 return [(b, bot_service.token_of(b)) for b in bots]
@@ -141,7 +146,7 @@ class OffersRuntime:
         seen = set()
         for bot, token in loaded:
             seen.add(bot.id)
-            rt = self.bots.setdefault(bot.id, BotRuntime(bot.id))
+            rt = self.bots.setdefault(bot.id, BotRuntime(bot.id, bot.account_id))
             token_hash = hashlib.sha256(token.encode()).hexdigest() if token else ""
             if token_hash != rt.token_hash:
                 await self._stop_app(rt)
@@ -243,7 +248,9 @@ class OffersRuntime:
         loaded = await self.sync()
         for bot, token in loaded:
             try:
-                await self.tick_bot(bot, bool(token))
+                # cada bot trabalha DENTRO da conta dona dele (as tarefas criadas aqui herdam a conta)
+                with tenancy.use_account(bot.account_id):
+                    await self.tick_bot(bot, bool(token))
             except Exception:  # noqa: BLE001
                 logger.exception("Erro no bot de ofertas %s", bot.id)
         now = time.monotonic()

@@ -71,7 +71,14 @@ def clean_db(migrated_db):
             text("SELECT tablename FROM pg_tables WHERE schemaname='public' AND tablename <> 'alembic_version'")
         ).all()
         conn.execute(text("TRUNCATE " + ", ".join(f'"{t}"' for t in tables) + " RESTART IDENTITY CASCADE"))
-    yield
+        # conta principal (dona da plataforma), como a migração cria
+        conn.execute(text("INSERT INTO accounts (id, name, plan, is_platform) VALUES (1, 'Conta principal', 'agencia', true)"))
+        conn.execute(text("SELECT setval(pg_get_serial_sequence('accounts', 'id'), 1)"))
+    from core import tenancy
+
+    # os testes rodam como a conta principal (o painel define a conta pela sessão)
+    with tenancy.use_account(1):
+        yield
 
 
 class FakePaymentClient:

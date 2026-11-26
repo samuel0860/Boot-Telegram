@@ -76,7 +76,7 @@ def test_connection_diagnostics():
 def test_ml_secret_is_encrypted_at_rest():
     configure_ml()
     with session_scope() as s:
-        row = s.get(AppSetting, "ml_secret_key")
+        row = s.get(AppSetting, (1, "ml_secret_key"))
         assert row.is_secret and "segredo" not in row.value
         assert settings_service.get_all(s)["ml_secret_key"] == "segredo"
 

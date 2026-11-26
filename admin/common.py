@@ -55,6 +55,21 @@ def _fmt_ago(value) -> str:
     return f"em {txt}" if future else f"há {txt}"
 
 
+def current_account(db):
+    """Conta (cliente) em uso nesta requisição."""
+    from core import tenancy
+    from models import Account
+
+    return db.get(Account, tenancy.account_or_primary())
+
+
+def current_plan(db):
+    from core import plans
+
+    account = current_account(db)
+    return plans.spec(account.plan if account else None)
+
+
 templates.env.filters["brl"] = lambda v: brl(v) if v is not None else "—"
 templates.env.filters["ago"] = _fmt_ago
 templates.env.filters["dt"] = _fmt_dt
@@ -64,22 +79,34 @@ templates.env.globals["csrf_token"] = get_csrf_token
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
-def nav_context() -> dict[str, Any]:
-    """Dados do menu lateral: identidade do bot de vendas e a lista dos bots de promoção."""
-    from core import alert_service, settings_service
+def nav_context(admin: AdminUser | None = None) -> dict[str, Any]:
+    """Dados do menu lateral: conta em uso, bot de vendas e a lista dos bots de promoção."""
+    from core import alert_service, plans, settings_service, tenancy
     from database import session_scope
-    from models import OfferBot
+    from models import Account, OfferBot
 
     try:
         with session_scope() as session:
+            account_id = tenancy.account_or_primary()
+            account = session.get(Account, account_id)
+            own = session.get(Account, admin.account_id) if admin is not None else None
+            plan = plans.spec(account.plan if account else None)
+            nav_account = {
+                "id": account_id, "name": account.name if account else "", "plan": plan.name,
+                "platform_admin": bool(own and own.is_platform),
+                "acting": admin is not None and account_id != admin.account_id,
+                # o bot de vendas ainda é um só (o da conta principal); por cliente vem numa etapa seguinte
+                "sales": account_id == tenancy.PRIMARY_ACCOUNT_ID,
+            }
             values = settings_service.get_all(session)
             bots = [
                 {"id": b.id, "name": b.name, "on": b.is_active, "username": b.telegram_username}
                 for b in session.scalars(select(OfferBot).order_by(OfferBot.name, OfferBot.id))
             ]
         return {
+            "nav_account": nav_account,
             "nav_sales": {
-                "username": settings.telegram_bot_username,
+                "username": settings.telegram_bot_username if nav_account["sales"] else "",
                 "online": alert_service.bot_online(values),
             },
             "nav_offers": {
@@ -88,7 +115,7 @@ def nav_context() -> dict[str, Any]:
             },
         }
     except Exception:  # noqa: BLE001 - o menu nunca pode derrubar a página
-        return {"nav_sales": {"username": settings.telegram_bot_username, "online": False},
+        return {"nav_account": None, "nav_sales": {"username": "", "online": False},
                 "nav_offers": {"online": False, "bots": []}}
 
 
@@ -96,7 +123,7 @@ def render(request: Request, template: str, admin: AdminUser | None, **ctx: Any)
     flashes = request.session.pop("flash", [])
     base = {"admin": admin, "flashes": flashes, "now": utcnow()}
     if admin is not None:
-        base.update(nav_context())
+        base.update(nav_context(admin))
     return templates.TemplateResponse(request, template, {**base, **ctx})
 
 

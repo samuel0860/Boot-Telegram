@@ -26,6 +26,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from config import settings
+from core import tenancy
 from database import session_scope
 from models import (
     Order,
@@ -472,6 +473,7 @@ def handle_mercadopago_webhook(
         inserted_id = session.scalar(
             pg_insert(WebhookEvent)
             .values(
+                account_id=tenancy.account_or_primary(),
                 provider=MERCADOPAGO,
                 event_key=event_key,
                 event_type=(str(event_type)[:64] if event_type else None),

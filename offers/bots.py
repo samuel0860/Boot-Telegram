@@ -41,7 +41,7 @@ def shopee_credentials(session: Session) -> tuple[str, str]:
 
 
 def config_for(session: Session, bot: OfferBot) -> offer_config.BotConfig:
-    values = settings_service.get_all(session)
+    values = settings_service.get_all(session, bot.account_id)   # contas das lojas DA CONTA dona do bot
     return offer_config.parse(
         bot.config, enabled=bot.is_active,
         **store_kwargs(values))

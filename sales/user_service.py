@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from sqlalchemy import func, literal_column, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
+from core import tenancy
 from database import session_scope
 from models import User
 from sales.access_service import log_event
@@ -37,6 +38,7 @@ def register_telegram_user(
 ) -> UserInfo:
     """Cria ou atualiza o usuário pelo Telegram ID (UPSERT atômico, sem duplicados)."""
     values = {
+        "account_id": tenancy.account_or_primary(),
         "telegram_id": telegram_id,
         "username": _clean(username, 64),
         "first_name": _clean(first_name, 128),
@@ -47,7 +49,7 @@ def register_telegram_user(
     }
     stmt = pg_insert(User).values(**values)
     stmt = stmt.on_conflict_do_update(
-        index_elements=[User.telegram_id],
+        index_elements=[User.account_id, User.telegram_id],
         set_={
             "username": stmt.excluded.username,
             "first_name": stmt.excluded.first_name,

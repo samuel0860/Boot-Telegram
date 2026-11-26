@@ -41,6 +41,7 @@ class FakeApp:
 
     def __init__(self, token, bot_id, fail_targets=()):
         self.token, self.bot_id = token, bot_id
+        self.bot_data: dict = {}
         self.bot = FakeTgBot(token, fail_targets)
         self.running = False
         self.updater = SimpleNamespace(running=False, start_polling=self._poll, stop=self._stop_poll)

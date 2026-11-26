@@ -221,7 +221,7 @@ def test_panel_amazon_credentials_and_bot_sources(panel):
                                                "amazon_partner_tag": TAG, "amazon_version": "3.1"})
     assert "Credenciais da Amazon salvas" in r.text and SECRET not in r.text
     with session_scope() as s:
-        row = s.get(AppSetting, "amazon_secret")
+        row = s.get(AppSetting, (1, "amazon_secret"))
         assert row.is_secret and SECRET not in row.value
     r = c.post("/admin/offers/settings/test", data={"csrf_token": _tok(c, "/admin/offers/settings"),
                                                     "store": "amazon"})

@@ -29,7 +29,7 @@ from telegram.ext import (
 )
 
 from config import ConfigError, configure_logging, settings
-from core import error_reporter
+from core import error_reporter, tenancy
 from database import check_connection
 from sales.bot import admin, groups, jobs, sales
 from sales.bot.router import on_callback
@@ -113,6 +113,9 @@ def main() -> None:
         raise SystemExit("Não foi possível conectar ao PostgreSQL. Verifique DATABASE_URL.")
     if not settings.payments_configured:
         logger.warning("MP_ACCESS_TOKEN não configurado — compras ficarão indisponíveis.")
+    # Este processo atende a conta principal (o bot de vendas por cliente vem numa etapa seguinte):
+    # todas as consultas e gravações ficam dentro dela.
+    tenancy.set_account(tenancy.PRIMARY_ACCOUNT_ID)
     app = build_application()
     # chat_member precisa ser solicitado explicitamente
     app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=False)

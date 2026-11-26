@@ -7,11 +7,11 @@ from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
 from admin.auth import client_ip, current_admin, require_superuser, verify_csrf
-from admin.common import audit, flash, paginate, redirect, render, valid_affiliate
+from admin.common import audit, current_plan, flash, paginate, redirect, render, valid_affiliate
 from config import settings
 from core import alert_service, settings_service
 from core.alert_service import OFFERS_HEARTBEAT
@@ -119,6 +119,11 @@ def bots_resume_all(request: Request, _csrf: None = Depends(verify_csrf),
 @router.post("/offers/bots/create")
 def bot_create(request: Request, name: str = Form(..., max_length=80), _csrf: None = Depends(verify_csrf),
                admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
+    plan = current_plan(db)
+    if db.scalar(select(func.count()).select_from(OfferBot)) >= plan.max_offer_bots:
+        flash(request, f"O plano {plan.name} permite até {plan.max_offer_bots} bot(s) de promoção. "
+                       "Faça upgrade do plano para criar mais.", "error")
+        return redirect("/admin/offers/bots")
     try:
         bot = bot_service.create_bot(db, name)
     except bot_service.BotError as exc:
@@ -487,6 +492,10 @@ def _whatsapp_context(bot: OfferBot, cfg, admin: AdminUser, want_qr: bool) -> di
 def wa_connect(bot_id: int, request: Request, _csrf: None = Depends(verify_csrf),
                admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
     bot = _bot(db, bot_id)
+    plan = current_plan(db)
+    if not plan.whatsapp:
+        flash(request, f"O WhatsApp não faz parte do plano {plan.name}. Faça upgrade para usar.", "error")
+        return redirect(_back(bot_id, "whatsapp"))
     try:
         with wa_client_factory() as client:
             if client.state(bot.wa_instance) == "missing":

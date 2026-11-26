@@ -97,11 +97,15 @@
         {% if admin.is_superuser %}{{ navlink('/admin/admins', 'shield', 'Administradores', '/admin/admins') }}{% endif %}
         {{ navlink('/admin/account', 'user', 'Minha conta', '/admin/account') }}
       {% endcall %}
+
+      {% if nav_account and nav_account.platform_admin %}
+      {{ navlink('/admin/platform', 'globe', 'Clientes da plataforma', '/admin/platform') }}
+      {% endif %}
     </nav>
     <div class="sidebar-footer">
       <a href="/admin/account" class="user-chip">
         <span class="avatar">{{ admin.username[:1]|upper }}</span>
-        <span class="user-info"><b>{{ admin.username }}</b><small>{{ 'Superusuário' if admin.is_superuser else 'Operador' }}</small></span>
+        <span class="user-info"><b>{{ admin.username }}</b><small>{% if nav_account %}{{ nav_account.name }} · plano {{ nav_account.plan }}{% else %}{{ 'Superusuário' if admin.is_superuser else 'Operador' }}{% endif %}</small></span>
       </a>
       <form method="post" action="/admin/logout">
         <input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}">
@@ -125,6 +129,10 @@
       <a class="topbar-link" href="/" target="_blank" rel="noopener">{{ icon('external') }}<span>Ver página inicial</span></a>
     </header>
     <main class="content">
+      {% if nav_account and nav_account.acting %}
+      <div class="alert alert-warn acting-bar">{{ icon('alert') }}<span>Você está na conta <b>{{ nav_account.name }}</b> (suporte). Tudo o que fizer vale para este cliente.</span>
+        <form method="post" action="/admin/platform/leave"><input type="hidden" name="csrf_token" value="{{ csrf_token(request) }}"><button class="btn btn-sm">Voltar para a plataforma</button></form></div>
+      {% endif %}
       {% for f in flashes %}
         <div class="alert alert-{{ f.kind }}">{{ icon('check' if f.kind == 'ok' else 'alert') }}<span>{{ f.message }}</span></div>
       {% endfor %}
