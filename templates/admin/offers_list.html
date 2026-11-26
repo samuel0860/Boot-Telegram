@@ -16,6 +16,32 @@
   <button class="btn btn-sm btn-secondary">Trocar</button>
 </form>
 
+<section class="card mb-3">
+  <div class="card-header"><div class="card-icon">{{ icon('link') }}</div>
+    <div><h2>Postar produto pelo link</h2>
+    <p>Cole o link do produto (Shopee, Mercado Livre ou Amazon). Foto, título e preço vêm da API; o seu link curto de afiliado (s.shopee.com.br, meli.la, amzn.to) é o que vai no post.</p></div>
+  </div>
+  <form method="post" action="/admin/offers/bots/{{ current.id }}/import" class="offer-form">{{ csrf() }}
+    <div class="offer-fields">
+      <input name="link" required maxlength="500" placeholder="https://s.shopee.com.br/... ou link da página do produto">
+      <input name="headline" maxlength="120" placeholder="Chamada: vazio = automática (produto + desconto)">
+      <input name="coupon" maxlength="40" placeholder="Cupom (opcional)">
+    </div>
+    <div class="row-form">
+      {% if has_tg and wa_ready %}
+        <button class="btn btn-sm" name="target" value="both">{{ icon('send') }}Publicar (Telegram + WhatsApp)</button>
+        <button class="btn btn-sm btn-secondary" name="target" value="telegram">Só Telegram</button>
+        <button class="btn btn-sm btn-secondary" name="target" value="whatsapp">Só WhatsApp</button>
+      {% elif has_tg %}
+        <button class="btn btn-sm" name="target" value="telegram">{{ icon('send') }}Publicar no Telegram</button>
+      {% elif wa_ready %}
+        <button class="btn btn-sm" name="target" value="whatsapp">{{ icon('phone') }}Enviar no WhatsApp</button>
+      {% endif %}
+      <button class="btn btn-sm btn-secondary" name="target" value="prepare">{{ icon('eye') }}Só importar (ver prévia antes)</button>
+    </div>
+  </form>
+</section>
+
 {% set labels = {'new': 'Aguardando', 'queued': 'Na fila', 'posted': 'Publicadas', 'discarded': 'Descartadas', 'failed': 'Falhas'} %}
 <div class="segmented">
   {% for s in statuses %}<a href="?bot={{ current.id }}&status={{ s }}" class="{{ 'on' if status == s }}">{{ labels.get(s, s) }}<span class="count">{{ stats.get(s, 0) }}</span></a>{% endfor %}

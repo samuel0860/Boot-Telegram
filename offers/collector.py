@@ -363,8 +363,9 @@ def set_offer_details(session: Session, offer: PromoOffer, affiliate_url: str | 
 
 
 def queue_post(offer_id: int, bot_id: int, *, telegram: bool = True, whatsapp_too: bool = True,
-               admin_id: int | None = None, ip: str | None = None) -> bool:
-    """Coloca a oferta na fila do bot (Telegram e/ou WhatsApp)."""
+               admin_id: int | None = None, ip: str | None = None, first: bool = False) -> bool:
+    """Coloca a oferta na fila do bot (Telegram e/ou WhatsApp). first=True: fura a fila do Telegram
+    (post manual sai antes das ofertas automáticas que já estavam esperando)."""
     from offers import whatsapp
 
     with session_scope() as session:
@@ -376,7 +377,7 @@ def queue_post(offer_id: int, bot_id: int, *, telegram: bool = True, whatsapp_to
         changed = False
         if telegram and post.status != OfferStatus.QUEUED and bot_service.active_targets(bot, TargetChannel.TELEGRAM):
             post.status = OfferStatus.QUEUED
-            post.queued_at = utcnow()
+            post.queued_at = utcnow() - timedelta(days=1) if first else utcnow()
             post.error = None
             changed = True
         if whatsapp_too:

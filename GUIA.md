@@ -166,6 +166,15 @@ Depois de vincular o seu Telegram (Minha conta):
 
 O post sai nos canais/grupos **daquele bot**, com o **seu link de afiliado** no texto e no botão "Ver oferta". No WhatsApp, ele segue o ritmo de envio do número do bot.
 
+### Pelo painel (computador)
+
+Em **Ofertas encontradas**, escolha o bot e use o quadro **Postar produto pelo link** no topo:
+1. Cole o link (o seu link curto de afiliado da Shopee `s.shopee.com.br/...`, `meli.la/...` ou `amzn.to/...`, ou o link da página do produto).
+2. Chamada e cupom são opcionais (chamada vazia = automática).
+3. Clique em **Publicar** (Telegram + WhatsApp, só Telegram ou só WhatsApp) ou em **Só importar** para conferir a prévia antes.
+
+Foto, título e preço vêm da API da loja. O post manual **passa na frente** das ofertas automáticas que estão na fila do Telegram (respeitando o intervalo entre posts).
+
 ## 8. Vendas pelo bot próprio (funil + PIX)
 
 **Configurar o PIX:**

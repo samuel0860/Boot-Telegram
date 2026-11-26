@@ -233,3 +233,39 @@ def test_panel_shopee_credentials_and_bot_sources(panel):
     assert "Busca concluída" in r.text
     page = c.get(f"/admin/offers?bot={bot}&status=all").text
     assert "Air Fryer Mondial 4L" in page and "badge-store-shopee" in page and "s.shopee.com.br/AFF1" in page
+
+
+def test_panel_manual_link_imports_and_queues(panel):
+    c = panel
+    configure_shopee()
+    bot = make_bot(telegram=("@canal",))
+    page = f"/admin/offers?bot={bot}"
+    assert "Postar produto pelo link" in c.get(page).text
+
+    r = c.post(f"/admin/offers/bots/{bot}/import", data={"csrf_token": _tok(c, page), "link": "https://nada.com/x",
+                                                         "target": "telegram"})
+    assert "Envie um link" in r.text
+
+    r = c.post(f"/admin/offers/bots/{bot}/import",
+               data={"csrf_token": _tok(c, page), "link": "https://shopee.com.br/product/1111/2222",
+                     "coupon": "MANUAL5", "target": "telegram"})
+    assert "Produto importado e na fila" in r.text
+    with session_scope() as s:
+        post = s.scalar(select(OfferPost).where(OfferPost.bot_id == bot))
+        offer = s.get(PromoOffer, post.offer_id)
+        assert post.status == OfferStatus.QUEUED and offer.platform == "shopee"
+        assert offer.coupon == "MANUAL5" and offer.image_url and offer.source == "conversor"
+
+
+def test_manual_post_jumps_telegram_queue():
+    from datetime import timedelta
+
+    from core.audit import utcnow
+    configure_shopee()
+    bot = make_bot(telegram=("@canal",))
+    preview = converter.import_link(bot, "https://shopee.com.br/product/1111/2222",
+                                    shopee_factory=FakeShopee().factory())
+    assert collector.queue_post(preview.offer_id, bot, whatsapp_too=False, first=True)
+    with session_scope() as s:
+        post = s.scalar(select(OfferPost).where(OfferPost.bot_id == bot))
+        assert post.queued_at < utcnow() - timedelta(hours=12)

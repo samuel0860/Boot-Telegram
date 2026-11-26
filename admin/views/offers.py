@@ -18,7 +18,7 @@ from core.alert_service import OFFERS_HEARTBEAT
 from core.audit import utcnow
 from database import get_db
 from models import AdminUser, OfferBot, OfferPost, OfferStatus, OfferTarget, PromoOffer, TargetChannel
-from offers import amazon, collector, post_template, whatsapp
+from offers import amazon, collector, converter, post_template, whatsapp
 from offers import bots as bot_service
 from offers import config as offer_config
 from offers.amazon import AmazonError
@@ -625,6 +625,38 @@ def offer_queue(bot_id: int, offer_id: int, request: Request, target: str = Form
     else:
         flash(request, "Nada a fazer: a oferta já está na fila ou o bot não tem destinos ativos.", "warn")
     return redirect(_offer_back(request, bot_id))
+
+
+@router.post("/offers/bots/{bot_id}/import")
+def offer_import(bot_id: int, request: Request, link: str = Form("", max_length=500),
+                 headline: str = Form("", max_length=120), coupon: str = Form("", max_length=40),
+                 target: str = Form("prepare"), _csrf: None = Depends(verify_csrf),
+                 admin: AdminUser = Depends(current_admin), db: Session = Depends(get_db)):
+    """Post manual: cola o link (Shopee, Mercado Livre ou Amazon), a API traz foto, preço e título."""
+    _bot(db, bot_id)
+    db.rollback()   # libera a sessão: import_link abre a sua própria
+    text = link.strip()
+    if headline.strip():
+        text += f"\nchamada: {headline.strip()}"
+    if coupon.strip():
+        text += f"\ncupom: {coupon.strip()}"
+    try:
+        preview = converter.import_link(bot_id, text, client_factory=ml_client_factory,
+                                        shopee_factory=shopee_client_factory, amazon_factory=amazon_client_factory)
+    except converter.ConvertError as exc:
+        flash(request, str(exc), "error")
+        return redirect(f"/admin/offers?bot={bot_id}")
+    if target not in ("both", "telegram", "whatsapp"):
+        flash(request, "Produto importado. Confira a prévia e clique em Publicar.")
+        return redirect(f"/admin/offers?bot={bot_id}&status=new")
+    ok = collector.queue_post(preview.offer_id, bot_id, telegram=target in ("both", "telegram"),
+                              whatsapp_too=target in ("both", "whatsapp"), admin_id=admin.id, ip=client_ip(request),
+                              first=True)
+    if ok:
+        flash(request, "Produto importado e na fila — é o próximo a sair, respeitando o intervalo entre posts.")
+        return redirect(f"/admin/offers?bot={bot_id}&status=queued")
+    flash(request, "Produto importado, mas o bot não tem destinos ativos (ou já estava na fila).", "warn")
+    return redirect(f"/admin/offers?bot={bot_id}&status=all")
 
 
 @router.post("/offers/bots/{bot_id}/offers/{offer_id}/discard")
