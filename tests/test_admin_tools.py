@@ -209,3 +209,28 @@ def test_redesigned_pages_render(panel, catalog):
         r = panel.get(path)
         assert r.status_code == 200, path
     assert "R$ 15,00" in panel.get("/admin/plans").text
+
+
+def test_legacy_fixed_headline_is_cleared_by_migration():
+    """A migração c8e2f4a1b7d3 troca a chamada fixa antiga pela automática."""
+    import importlib.util
+    import pathlib
+
+    from database import engine
+    from tests.fakes import make_bot
+
+    keep = make_bot(config={"default_headline": "SÓ HOJE"})
+    legacy = make_bot(config={"default_headline": "PRECIN NO MERCADO LIVRE"})
+    path = next(pathlib.Path("migrations/versions").glob("*c8e2f4a1b7d3*.py"))
+    spec = importlib.util.spec_from_file_location("mig_c8e2", path)
+    mig = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mig)
+    from alembic.migration import MigrationContext
+    from alembic.operations import Operations
+    with engine.begin() as conn:
+        mig.op = Operations(MigrationContext.configure(conn))
+        mig.upgrade()
+    with session_scope() as s:
+        from models import OfferBot
+        assert s.get(OfferBot, legacy).config["default_headline"] == ""
+        assert s.get(OfferBot, keep).config["default_headline"] == "SÓ HOJE"

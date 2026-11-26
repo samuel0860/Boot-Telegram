@@ -324,7 +324,7 @@
         <label>Chamada fixa <small>vazio = automática: o bot monta com o nome do produto e o desconto (ex.: “ECHO DOT COM 40% OFF”)</small><input name="default_headline" value="{{ cfg.default_headline }}" maxlength="120" placeholder="Automática"></label>
         <label>Rodapé <small>marcador {rodape} · aviso de link de afiliado</small><input name="footer" value="{{ cfg.footer }}" maxlength="500"></label>
       </div>
-      <label class="check-inline"><input type="checkbox" name="reset_template" value="1"> Restaurar o modelo padrão ao salvar</label>
+      <label class="check-inline"><input type="checkbox" name="reset_template" value="1"> Restaurar o modelo padrão (e a chamada automática) ao salvar</label>
       {% if admin.is_superuser %}<div class="card-footer"><button class="btn btn-lg">{{ icon('save') }}Salvar modelo</button></div>{% endif %}
     </section>
   </form>

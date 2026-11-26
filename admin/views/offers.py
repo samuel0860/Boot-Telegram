@@ -338,7 +338,7 @@ def bot_template(
         return redirect(_back(bot_id, "post"))
     bot_service.update_config(bot, {
         "template": "" if text == post_template.DEFAULT_TEMPLATE else text,
-        "default_headline": default_headline.strip(), "footer": footer.strip(),
+        "default_headline": "" if reset_template else default_headline.strip(), "footer": footer.strip(),
     })
     audit(db, request, admin, "offer_bot_template_saved", bot_id=bot.id)
     db.commit()
