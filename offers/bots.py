@@ -196,3 +196,26 @@ def last_run(bot: OfferBot) -> datetime | None:
         return datetime.fromisoformat(raw) if raw else None
     except ValueError:
         return None
+
+
+# --------------------------------------------------------------------------- #
+# Copiar configuração de um bot para outro
+# --------------------------------------------------------------------------- #
+POST_KEYS = ("template", "default_headline", "footer")
+WA_RHYTHM_KEYS = tuple(k for k in offer_config.DEFAULT_CONFIG if k.startswith("wa_") and k != "wa_enabled")
+SEARCH_KEYS = tuple(k for k in offer_config.DEFAULT_CONFIG
+                    if k not in POST_KEYS and not k.startswith("wa_"))
+COPY_GROUPS = {"busca": ("Busca e filtros", SEARCH_KEYS), "post": ("Modelo do post", POST_KEYS),
+               "whatsapp": ("Ritmo do WhatsApp", WA_RHYTHM_KEYS)}
+
+
+def copy_config(source: OfferBot, target: OfferBot, groups: list[str]) -> list[str]:
+    """Copia as partes escolhidas da configuração (tokens, destinos e WhatsApp conectado não são copiados)."""
+    values = offer_config.merged(source.config)
+    copied = []
+    for g in groups:
+        if g in COPY_GROUPS:
+            label, keys = COPY_GROUPS[g]
+            update_config(target, {k: values[k] for k in keys})
+            copied.append(label)
+    return copied

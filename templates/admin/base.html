@@ -67,7 +67,8 @@
             <small>{{ obots|length }} bot{{ 's' if obots|length != 1 }} · afiliados</small></span>
           <span class="live {{ 'on' if nav_offers and nav_offers.online }}" title="{{ 'Módulo de promoções online' if nav_offers and nav_offers.online else 'Módulo de promoções sem sinal' }}"></span>
         </div>
-        {% call navgroup('promo-bots', 'zap', 'Bots de promoção', ['/admin/offers/bots']) %}
+        {{ navlink('/admin/offers/bots', 'grid', 'Central dos bots') }}
+        {% call navgroup('promo-bots', 'zap', 'Bots de promoção', ['/admin/offers/bots/']) %}
           {%- set p = request.url.path -%}
           {% for b in obots %}
             {%- set href = '/admin/offers/bots/' ~ b.id -%}
@@ -76,9 +77,10 @@
               <span class="nav-bot-text"><span>{{ b.name }}</span><small>{{ '@' ~ b.username if b.username else 'sem token' }}</small></span>
             </a>
           {% endfor %}
-          <a href="/admin/offers/bots" class="nav-link nav-add {{ 'active' if p == '/admin/offers/bots' }}">{{ icon('plus') }}<span>{{ 'Gerenciar bots' if obots else 'Criar primeiro bot' }}</span></a>
+          <a href="/admin/offers/bots#novo" class="nav-link nav-add">{{ icon('plus') }}<span>{{ 'Novo bot' if obots else 'Criar primeiro bot' }}</span></a>
         {% endcall %}
         {{ navlink('/admin/offers', 'tag', 'Ofertas encontradas') }}
+        {{ navlink('/admin/offers/stats', 'chart', 'Estatísticas') }}
         {{ navlink('/admin/offers/settings', 'key', 'Lojas e APIs', '/admin/offers/settings') }}
       </div>
 

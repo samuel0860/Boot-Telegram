@@ -314,7 +314,7 @@ def test_panel_full_flow(panel):
     r = c.post(f"{bot_url}/run", data={"csrf_token": _tok(c, bot_url)}, follow_redirects=False)
     assert r.headers["location"] == f"/admin/offers?bot={bot_id}"
     page = c.get(f"/admin/offers?bot={bot_id}&status=queued").text
-    assert "Fone Bluetooth X" in page and "-50%" in page and "🔥 *OFERTA*" in page
+    assert "Fone Bluetooth X" in page and "-50%" in page and "🔥 <b>OFERTA</b>" in page
 
     with session_scope() as s:
         offer_id = s.scalar(select(PromoOffer.id).where(PromoOffer.external_id == "MLB100"))

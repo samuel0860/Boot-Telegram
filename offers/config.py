@@ -43,6 +43,7 @@ DEFAULT_CONFIG: dict[str, str] = {
     "keywords": "",
     "no_repeat_days": "7",
     "active_hours": "08:00-23:00",
+    "skip_fake": "1",                  # não publica sozinho oferta com desconto suspeito ("De" inflado)
     # Texto do post
     "template": "",                    # vazio = modelo padrão
     "default_headline": "",            # vazio = chamada automática (produto + desconto)
@@ -153,6 +154,7 @@ class BotConfig:
     shopee_categories: list[int] = field(default_factory=list)
     shopee_sort: str = "sales"
     use_amazon: bool = False
+    skip_fake: bool = True
     amazon_id: str = ""
     amazon_secret: str = ""
     amazon_tag: str = ""
@@ -265,6 +267,7 @@ def parse(raw: dict | None, *, enabled: bool = False, app_id: str = "", secret_k
         shopee_categories=[int(c) for c in split_list(v["shopee_categories"]) if c.isdigit()][:10],
         shopee_sort=v["shopee_sort"] if v["shopee_sort"] in ("sales", "commission", "relevance", "price_asc") else "sales",
         use_amazon=v["src_amazon"] == "1",
+        skip_fake=v["skip_fake"] == "1",
         amazon_id=amazon_id.strip(),
         amazon_secret=amazon_secret.strip(),
         amazon_tag=amazon_tag.strip(),

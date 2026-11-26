@@ -35,7 +35,28 @@ def _fmt_dt(value) -> str:
     return value.astimezone(TZ).strftime("%d/%m/%Y %H:%M") if value else "—"
 
 
+def _fmt_ago(value) -> str:
+    """'há 5 min', 'em 12 min', 'há 3 h', 'há 2 dias' (ou data, se for longe)."""
+    if not value:
+        return "—"
+    secs = (value - utcnow()).total_seconds()
+    future, secs = secs > 0, abs(secs)
+    if secs < 60:
+        return "agora"
+    if secs < 3600:
+        txt = f"{int(secs // 60)} min"
+    elif secs < 86400:
+        txt = f"{int(secs // 3600)} h"
+    elif secs < 7 * 86400:
+        days = int(secs // 86400)
+        txt = f"{days} dia{'s' if days != 1 else ''}"
+    else:
+        return _fmt_dt(value)
+    return f"em {txt}" if future else f"há {txt}"
+
+
 templates.env.filters["brl"] = lambda v: brl(v) if v is not None else "—"
+templates.env.filters["ago"] = _fmt_ago
 templates.env.filters["dt"] = _fmt_dt
 templates.env.globals["csrf_token"] = get_csrf_token
 

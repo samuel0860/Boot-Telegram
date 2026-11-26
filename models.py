@@ -563,6 +563,8 @@ class PromoOffer(TimestampMixin, Base):
     category_id: Mapped[str | None] = mapped_column(String(32))
     source: Mapped[str | None] = mapped_column(String(100))
     last_seen_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Detector de desconto falso: motivo quando o "De" parece inflado (None = desconto parece real)
+    price_note: Mapped[str | None] = mapped_column(String(200))
 
     posts: Mapped[list[OfferPost]] = relationship(back_populates="offer", cascade="all, delete-orphan")
 
@@ -574,6 +576,20 @@ class PromoOffer(TimestampMixin, Base):
     @property
     def link(self) -> str:
         return self.affiliate_url or self.product_url
+
+
+class PriceHistory(Base):
+    """Preço visto de cada oferta (no máximo um registro por dia, ou quando o preço muda)."""
+
+    __tablename__ = "promo_price_history"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
+    offer_id: Mapped[int] = mapped_column(ForeignKey("promo_offers.id", ondelete="CASCADE"), nullable=False)
+    price: Mapped[Decimal] = mapped_column(MONEY, nullable=False)
+    original_price: Mapped[Decimal | None] = mapped_column(MONEY)
+    seen_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+    __table_args__ = (Index("ix_promo_price_history_offer_id_seen_at", "offer_id", "seen_at"),)
 
 
 class OfferPost(TimestampMixin, Base):

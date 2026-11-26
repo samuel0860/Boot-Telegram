@@ -49,3 +49,24 @@
   <div class="page-actions">{{ caller() if caller is defined else '' }}</div>
 </div>
 {%- endmacro %}
+
+
+{#- "?" com explicação curta: passa o mouse (ou toca, no celular) para ver -#}
+{% macro help(text) -%}
+<span class="help-tip" tabindex="0" role="note" aria-label="{{ text }}"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg><span class="help-bubble">{{ text }}</span></span>
+{%- endmacro %}
+
+
+{#- Prévia do post como aparece no grupo (estilo app de mensagens). caption = HTML do Telegram (já escapado) -#}
+{% macro phone_post(caption, image_url=None, channel='') -%}
+<div class="phone">
+  <div class="phone-head"><span class="phone-avatar">{{ (channel or '?')[0]|upper }}</span><div><b>{{ channel or 'Seu grupo' }}</b><small>prévia</small></div></div>
+  <div class="phone-body">
+    <div class="phone-bubble">
+      {% if image_url %}<img src="{{ image_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}<div class="phone-noimg">foto do produto</div>{% endif %}
+      <div class="phone-text">{{ caption|safe }}</div>
+      <span class="phone-time">agora ✓✓</span>
+    </div>
+  </div>
+</div>
+{%- endmacro %}

@@ -1,5 +1,5 @@
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import csrf, page_header with context %}
+{% from "admin/_macros.html" import csrf, page_header, help, phone_post with context %}
 {% from "admin/_icons.html" import icon with context %}
 {% block title %}{{ bot.name }}{% endblock %}
 {% block head %}{% if tab == 'whatsapp' and waiting_qr %}<meta http-equiv="refresh" content="20">{% endif %}{% endblock %}
@@ -45,6 +45,22 @@
       <button class="btn btn-secondary">{{ icon('save') }}Salvar</button>
     </form>
   </section>
+
+  {% if other_bots %}
+  <section class="card">
+    <div class="card-header"><div class="card-icon">{{ icon('repeat') }}</div>
+      <div><h2>Copiar configuração de outro bot</h2>
+        <p>Útil para criar um bot novo igual a um que já funciona. Token, canais, grupos e o número do WhatsApp <b>não</b> são copiados.</p></div></div>
+    <form method="post" action="{{ base }}/copy" class="form" data-confirm="Substituir as partes marcadas pela configuração do outro bot?">{{ csrf() }}
+      <label>Copiar de
+        <select name="source_id">{% for o in other_bots %}<option value="{{ o.id }}">{{ o.name }}{{ ' (@' ~ o.telegram_username ~ ')' if o.telegram_username }}</option>{% endfor %}</select></label>
+      <div class="pills mb-3">
+        {% for key, label in copy_groups.items() %}<label class="pill"><input type="checkbox" name="groups" value="{{ key }}" {{ 'checked' if key != 'whatsapp' }}><span>{{ label }}</span></label>{% endfor %}
+      </div>
+      <button class="btn btn-secondary">{{ icon('repeat') }}Copiar para este bot</button>
+    </form>
+  </section>
+  {% endif %}
 
   <section class="card danger-zone">
     <details>
@@ -247,27 +263,29 @@
     <section class="card">
       <h2 class="mb-3">Publicação</h2>
       <div class="grid4">
-        <label>Modo
+        <label>Modo {{ help('Automático: o bot escolhe as melhores ofertas e publica sozinho. Manual: as ofertas ficam em “Aguardando” até você clicar em Publicar.') }}
           <select name="mode">
             <option value="auto" {{ 'selected' if cfg.mode == 'auto' }}>Automático — publica as melhores</option>
             <option value="manual" {{ 'selected' if cfg.mode == 'manual' }}>Manual — você aprova cada uma</option>
           </select></label>
-        <label>Buscar a cada <small>minutos</small><input name="interval_minutes" value="{{ cfg.interval_minutes }}" inputmode="numeric"></label>
-        <label>Posts por busca <small>máximo</small><input name="max_posts_per_cycle" value="{{ cfg.max_posts_per_cycle }}" inputmode="numeric"></label>
-        <label>Intervalo entre posts <small>segundos</small><input name="spacing_seconds" value="{{ cfg.spacing_seconds }}" inputmode="numeric"></label>
-        <label>Horário ativo <small>vazio = 24h</small><input name="active_hours" value="{{ values.active_hours }}" placeholder="08:00-23:00"></label>
-        <label>Não repetir produto <small>dias</small><input name="no_repeat_days" value="{{ cfg.no_repeat_days }}" inputmode="numeric"></label>
+        <label>Buscar a cada <small>minutos</small> {{ help('De quanto em quanto tempo o bot procura ofertas novas nas lojas.') }}<input name="interval_minutes" value="{{ cfg.interval_minutes }}" inputmode="numeric"></label>
+        <label>Posts por busca <small>máximo</small> {{ help('Quantas ofertas, no máximo, vão para a fila a cada busca (as de maior desconto primeiro).') }}<input name="max_posts_per_cycle" value="{{ cfg.max_posts_per_cycle }}" inputmode="numeric"></label>
+        <label>Intervalo entre posts <small>segundos</small> {{ help('Tempo mínimo entre um post e outro no Telegram, para o grupo não ficar lotado de uma vez.') }}<input name="spacing_seconds" value="{{ cfg.spacing_seconds }}" inputmode="numeric"></label>
+        <label>Horário ativo <small>vazio = 24h</small> {{ help('Fora desse horário o bot não busca nem publica (ex.: não manda nada de madrugada).') }}<input name="active_hours" value="{{ values.active_hours }}" placeholder="08:00-23:00"></label>
+        <label>Não repetir produto <small>dias</small> {{ help('Depois de publicar um produto, espera esses dias antes de poder publicá-lo de novo.') }}<input name="no_repeat_days" value="{{ cfg.no_repeat_days }}" inputmode="numeric"></label>
       </div>
     </section>
     <section class="card">
       <h2 class="mb-3">Filtros</h2>
       <div class="grid4">
-        <label>Desconto mínimo <small>%</small><input name="min_discount" value="{{ cfg.min_discount }}" inputmode="numeric"></label>
+        <label>Desconto mínimo <small>%</small> {{ help('Só entram ofertas com pelo menos esse desconto.') }}<input name="min_discount" value="{{ cfg.min_discount }}" inputmode="numeric"></label>
         <label>Preço mínimo <small>R$ · 0 = sem limite</small><input name="min_price" value="{{ values.min_price }}" inputmode="decimal"></label>
         <label>Preço máximo <small>R$ · 0 = sem limite</small><input name="max_price" value="{{ values.max_price }}" inputmode="decimal"></label>
       </div>
-      <label>Palavras bloqueadas <small>separe por vírgula</small>
+      <label>Palavras bloqueadas <small>separe por vírgula</small> {{ help('Produtos com essas palavras no nome são ignorados (ex.: capinha, usado, recondicionado).') }}
         <input name="blocked_words" value="{{ values.blocked_words }}" placeholder="capinha, película, usado"></label>
+      <label class="check-line mt-3"><input type="checkbox" name="skip_fake" value="1" {{ 'checked' if cfg.skip_fake }}>
+        <span><b>Detector de desconto falso</b> — não publica sozinho quando o preço “com desconto” é o mesmo que a loja já cobrava nos últimos dias (o “De” foi inflado). A oferta continua na lista com o aviso, e você pode publicar manualmente.</span></label>
     </section>
     <section class="card">
       <h2 class="mb-3">O que buscar na Shopee</h2>
@@ -315,7 +333,7 @@
         <label>Modelo <small>*negrito* · _itálico_ · ~riscado~ · linhas com marcador vazio somem</small>
           <textarea name="template" rows="10" maxlength="1500" spellcheck="false">{{ cfg.template }}</textarea></label>
         <div><span class="label-like">Prévia (exemplo)</span>
-          <div class="wa-bubble"><pre>{{ template_preview }}</pre></div></div>
+          {{ phone_post(template_preview, None, bot.name) }}</div>
       </div>
       <div class="placeholders">
         {% for name, desc in placeholders.items() %}<span class="pill-static" title="{{ desc }}"><code>{{ '{' ~ name ~ '}' }}</code> {{ desc }}</span>{% endfor %}

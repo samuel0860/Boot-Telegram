@@ -1,9 +1,10 @@
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import csrf, page_header with context %}
+{% from "admin/_macros.html" import csrf, page_header, help with context %}
 {% from "admin/_icons.html" import icon with context %}
-{% block title %}Bots de ofertas{% endblock %}
+{% block title %}Central dos bots{% endblock %}
 {% block content %}
-{% call page_header('Bots de ofertas', 'Cada bot alimenta os seus próprios canais do Telegram e grupos do WhatsApp com ofertas do Mercado Livre, da Shopee e da Amazon.') %}
+{% call page_header('Central dos bots de promoção', 'A situação de todos os bots numa tela só: o que está funcionando, o que falta configurar e o que precisa da sua atenção.') %}
+  <a class="btn btn-secondary" href="/admin/offers/stats">{{ icon('chart') }}Estatísticas</a>
   <a class="btn btn-secondary" href="/admin/offers/settings">{{ icon('key') }}Lojas e APIs</a>
 {% endcall %}
 
@@ -14,39 +15,97 @@
 <div class="alert alert-info">{{ icon('info') }}<span>Falta cadastrar a conta de pelo menos uma loja (Mercado Livre, Shopee ou Amazon). Vale para todos os bots: <a href="/admin/offers/settings">configurar agora</a>.</span></div>
 {% endif %}
 
-<div class="bot-grid">
-{% for b in bots %}
-  {%- set tg = b.targets|selectattr('channel.value', 'equalto', 'telegram')|selectattr('is_active')|list -%}
-  {%- set wa = b.targets|selectattr('channel.value', 'equalto', 'whatsapp')|selectattr('is_active')|list -%}
-  {%- set s = stats[b.id] -%}
-  <a class="card bot-card" href="/admin/offers/bots/{{ b.id }}">
-    <div class="bot-card-head">
-      <span class="status-dot {{ 'on' if b.is_active }}"></span>
-      <div><b>{{ b.name }}</b>
-        <small>{{ '@' ~ b.telegram_username if b.telegram_username else 'sem token do Telegram' }}</small></div>
-      <span class="badge {{ 'badge-ok' if b.is_active else 'badge-muted' }}"><span class="dot"></span>{{ 'Ligado' if b.is_active else 'Desligado' }}</span>
+{% if cards %}
+<div class="kpis">
+  <div class="kpi"><div class="kpi-top"><span class="kpi-label">Bots ligados</span><span class="kpi-icon ok">{{ icon('zap') }}</span></div>
+    <span class="kpi-value">{{ totals.active }} <small class="kpi-of">de {{ cards|length }}</small></span><span class="kpi-sub">{{ totals.groups }} {{ 'canal ou grupo' if totals.groups == 1 else 'canais e grupos' }} no total</span></div>
+  <div class="kpi"><div class="kpi-top"><span class="kpi-label">Publicadas nas últimas 24h</span><span class="kpi-icon info">{{ icon('send') }}</span></div>
+    <span class="kpi-value">{{ totals.posted_24h }}</span><span class="kpi-sub">Telegram · {{ totals.wa_24h }} no WhatsApp · {{ totals.queued }} na fila</span></div>
+  <div class="kpi {{ 'alert' if totals.attention }}"><div class="kpi-top"><span class="kpi-label">Precisam de atenção</span><span class="kpi-icon {{ 'warn' if totals.attention else 'ok' }}">{{ icon('alert' if totals.attention else 'check') }}</span></div>
+    <span class="kpi-value">{{ totals.attention }}</span><span class="kpi-sub">{{ 'veja os avisos nos cartões abaixo' if totals.attention else 'tudo certo por aqui' }}</span></div>
+</div>
+
+{% if admin.is_superuser %}
+<div class="toolbar mb-3">
+  <form method="post" action="/admin/offers/bots/pause-all">{{ csrf() }}
+    <button class="btn btn-sm btn-secondary" {{ 'disabled' if not totals.active }}>{{ icon('pause') }}Pausar todos</button></form>
+  {% if paused_all %}
+  <form method="post" action="/admin/offers/bots/resume-all">{{ csrf() }}
+    <button class="btn btn-sm">{{ icon('play') }}Retomar os que eu pausei</button></form>
+  {% endif %}
+  {{ help('“Pausar todos” desliga todos os bots de uma vez (ex.: manutenção, feriado). “Retomar” religa só os que estavam ligados antes.') }}
+</div>
+{% endif %}
+{% endif %}
+
+<div class="central-grid">
+{% for c in cards %}
+  {%- set b = c.bot -%}
+  <article class="card central-card level-{{ c.level }}">
+    <header class="central-head">
+      <span class="bot-avatar big">{{ (b.name or '?')[0]|upper }}</span>
+      <div class="central-name">
+        <a href="/admin/offers/bots/{{ b.id }}"><b>{{ b.name }}</b></a>
+        <small>{{ '@' ~ b.telegram_username if b.telegram_username else 'sem token do Telegram' }}{% if c.stores %} · {{ c.stores|join(', ') }}{% endif %}</small>
+      </div>
+      <span class="level-pill level-{{ c.level }}"><span class="dot"></span>{{ c.level_label }}</span>
+    </header>
+
+    <div class="central-stats">
+      <div><span>Publicadas 24h</span><b>{{ c.stats.posted_24h }}</b><small>WhatsApp {{ c.stats.wa_24h }}</small></div>
+      <div><span>Na fila</span><b>{{ c.stats.queued }}</b><small>{{ c.stats.new }} aguardando</small></div>
+      <div><span>Último post</span><b>{{ c.last_post_at|ago }}</b><small>{{ c.tg_count }} Telegram · {{ c.wa_count }} WhatsApp</small></div>
+      <div><span>Próxima busca</span><b>{{ c.next_search_at|ago if c.next_search_at else '—' }}</b><small>{{ 'automática' if b.is_active else 'bot desligado' }}</small></div>
     </div>
-    <ul class="today-list">
-      <li><span>{{ icon('send') }} Telegram</span><b>{{ tg|length }} destino{{ 's' if tg|length != 1 }}</b></li>
-      <li><span>{{ icon('phone') }} WhatsApp</span><b>{{ wa|length }} grupo{{ 's' if wa|length != 1 }}</b></li>
-      <li><span>Publicadas 24h</span><b>{{ s.posted_24h }} · WhatsApp {{ s.wa_24h }}</b></li>
-      <li><span>Na fila</span><b>{{ s.queued }}{% if s.new %} · {{ s.new }} aguardando{% endif %}</b></li>
+
+    {% if c.problems %}
+    <ul class="central-problems">
+      {% for p in c.problems %}<li>{{ icon('alert') }}<span>{{ p }}</span></li>{% endfor %}
     </ul>
-  </a>
+    {% endif %}
+
+    {% if c.level == 'setup' or c.done_steps < c.required_steps %}
+    <div class="central-setup">
+      <div class="setup-head"><b>Configuração</b><span>{{ c.done_steps }} de {{ c.required_steps }}</span></div>
+      <div class="progress"><span class="w-{{ ((c.done_steps / c.required_steps) * 10)|round|int * 10 if c.required_steps else 0 }}"></span></div>
+      <ul class="checklist">
+        {% for s in c.steps %}
+        <li>{% if s.done %}<span class="ok">{{ icon('check') }}</span>{% else %}<span class="no">{{ icon('circle') }}</span>{% endif %}
+          {% if s.done %}<span>{{ s.label }}</span>{% else %}<a href="{{ s.href }}">{{ s.label }}</a>{% endif %}
+          {% if s.optional %}<small class="muted-inline">opcional</small>{% endif %}</li>
+        {% endfor %}
+      </ul>
+    </div>
+    {% elif c.last_summary %}
+    <p class="central-last">{{ icon('search') }}<span><b>Última busca:</b> {{ c.last_summary }}</span></p>
+    {% endif %}
+
+    <footer class="central-actions">
+      <a class="btn btn-sm btn-secondary" href="/admin/offers?bot={{ b.id }}">{{ icon('tag') }}Ofertas</a>
+      <a class="btn btn-sm btn-secondary" href="/admin/offers/bots/{{ b.id }}">{{ icon('sliders') }}Configurar</a>
+      {% if admin.is_superuser %}
+      <form method="post" action="/admin/offers/bots/{{ b.id }}/run">{{ csrf() }}
+        <button class="btn btn-sm btn-secondary" title="Busca ofertas agora, sem esperar o próximo ciclo">{{ icon('search') }}Buscar agora</button></form>
+      <form method="post" action="/admin/offers/bots/{{ b.id }}/toggle">{{ csrf() }}<input type="hidden" name="back" value="central">
+        {% if b.is_active %}<button class="btn btn-sm btn-secondary">{{ icon('pause') }}Desligar</button>
+        {% else %}<button class="btn btn-sm">{{ icon('play') }}Ligar</button>{% endif %}</form>
+      {% endif %}
+    </footer>
+  </article>
 {% else %}
   <div class="card empty">
-    <p><b>Nenhum bot de ofertas ainda.</b></p>
+    <p><b>Nenhum bot de promoção ainda.</b></p>
     <p class="hint mt-2">Crie o primeiro abaixo. Exemplo: “Ofertas Tech” para os grupos de tecnologia, “Ofertas Casa” para os de casa.</p>
   </div>
 {% endfor %}
 </div>
 
 {% if admin.is_superuser %}
-<section class="card mt-3">
+<section class="card mt-3" id="novo">
   <div class="card-header">
     <div class="card-icon">{{ icon('plus') }}</div>
-    <div><h2>Novo bot de ofertas</h2>
-      <p>Depois de criar, cadastre o token do Telegram (crie um bot novo no @BotFather só para ele) e/ou conecte um número de WhatsApp.</p></div>
+    <div><h2>Novo bot de promoção</h2>
+      <p>Depois de criar, cadastre o token do Telegram (crie um bot novo no @BotFather só para ele) e/ou conecte um número de WhatsApp. Dica: na aba Geral do bot novo dá para <b>copiar a configuração</b> de um bot que já funciona.</p></div>
   </div>
   <form method="post" action="/admin/offers/bots/create" class="row-form">{{ csrf() }}
     <input name="name" required maxlength="80" placeholder="Nome do bot (ex.: Ofertas Tech)">
@@ -55,5 +114,5 @@
 </section>
 {% endif %}
 
-<p class="hint mt-3">{{ icon('info') }} O módulo de ofertas é separado das vendas: o bot de vendas{% if sales_bot %} (@{{ sales_bot }}){% endif %} não publica ofertas, e os bots de ofertas não vendem nada.</p>
+<p class="hint mt-3">{{ icon('info') }} O módulo de promoção é separado das vendas: o bot de vendas{% if sales_bot %} (@{{ sales_bot }}){% endif %} não publica ofertas, e os bots de promoção não vendem nada.</p>
 {% endblock %}

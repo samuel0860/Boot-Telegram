@@ -16,13 +16,14 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, true
 from sqlalchemy.orm import Session
 
 from core.audit import log_event, utcnow
 from database import session_scope
 from models import OfferBot, OfferPost, OfferStatus, PromoOffer, TargetChannel, WaStatus
 from offers import bots as bot_service
+from offers import price_history
 from offers.amazon import AmazonAuthError, AmazonClient, AmazonError
 from offers.config import BotConfig
 from offers.mercadolivre import MercadoLivreClient, MLAuthError, MLError, MLProduct, Product
@@ -58,12 +59,15 @@ class CycleResult:
     new: int = 0
     updated: int = 0
     queued: int = 0
+    suspicious: int = 0
     errors: list[str] = field(default_factory=list)
     finished_at: str = ""
 
     def summary(self) -> str:
         s = (f"{self.collected} produtos lidos, {self.eligible} dentro dos filtros, "
              f"{self.new} novos, {self.queued} enviados para a fila")
+        if self.suspicious:
+            s += f", {self.suspicious} com desconto suspeito (não publicadas)"
         if self.errors:
             s += f" — {len(self.errors)} aviso(s): " + "; ".join(self.errors[:3])
         return s
@@ -159,6 +163,7 @@ def upsert_offer(session: Session, p: MLProduct, now: datetime) -> tuple[PromoOf
     offer.source = p.source
     offer.last_seen_at = now
     session.flush()
+    price_history.update(session, offer, now)
     return offer, created
 
 
@@ -185,6 +190,8 @@ def _save(bot_id: int, products: list[MLProduct], cfg: BotConfig, result: CycleR
                 continue
             result.eligible += 1
             offer, _ = upsert_offer(session, p, now)
+            if cfg.skip_fake and offer.price_note:
+                result.suspicious += 1
             post, created = post_for(session, offer.id, bot_id)
             if created:
                 result.new += 1
@@ -200,7 +207,8 @@ def _save(bot_id: int, products: list[MLProduct], cfg: BotConfig, result: CycleR
         if allow_queue and cfg.mode == "auto" and seen_posts:
             best = session.scalars(
                 select(OfferPost).join(PromoOffer, PromoOffer.id == OfferPost.offer_id)
-                .where(OfferPost.id.in_(seen_posts), OfferPost.status == OfferStatus.NEW)
+                .where(OfferPost.id.in_(seen_posts), OfferPost.status == OfferStatus.NEW,
+                       PromoOffer.price_note.is_(None) if cfg.skip_fake else true())
                 .order_by(PromoOffer.discount_pct.desc().nulls_last(), PromoOffer.price)
                 .limit(cfg.max_posts_per_cycle)
             ).all()
@@ -409,7 +417,7 @@ def restore_post(offer_id: int, bot_id: int) -> None:
             post.status = OfferStatus.NEW
 
 
-def stats(bot_id: int) -> dict[str, int]:
+def stats(bot_id: int) -> dict:
     with session_scope() as session:
         rows = session.execute(select(OfferPost.status, func.count()).where(OfferPost.bot_id == bot_id)
                                .group_by(OfferPost.status)).all()
@@ -421,6 +429,9 @@ def stats(bot_id: int) -> dict[str, int]:
                 OfferPost.bot_id == bot_id, OfferPost.posted_at >= since, OfferPost.status == OfferStatus.POSTED))
         counts["wa_24h"] = session.scalar(
             select(func.count()).select_from(OfferPost).where(OfferPost.bot_id == bot_id, OfferPost.wa_sent_at >= since))
+        counts["last_posted_at"] = session.scalar(
+            select(func.max(OfferPost.posted_at)).where(OfferPost.bot_id == bot_id,
+                                                        OfferPost.status == OfferStatus.POSTED))
         counts["wa_pending"] = session.scalar(
             select(func.count()).select_from(OfferPost).where(OfferPost.bot_id == bot_id,
                                                               OfferPost.wa_status == WaStatus.PENDING))

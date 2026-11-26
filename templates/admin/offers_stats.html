@@ -1,0 +1,114 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import page_header, help with context %}
+{% from "admin/_icons.html" import icon with context %}
+{% block title %}Estatísticas{% endblock %}
+{% block content %}
+{% call page_header('Estatísticas', 'Quanto os bots de promoção publicaram, de quais lojas e quais tipos de produto mais saem.') %}
+  <a class="btn btn-secondary" href="/admin/offers/bots">{{ icon('grid') }}Central dos bots</a>
+{% endcall %}
+
+<form method="get" class="filter-bar mb-3">
+  <label class="label-like" for="stats-bot">Bot</label>
+  <select id="stats-bot" name="bot" class="auto-submit">
+    <option value="">Todos os bots</option>
+    {% for b in bots %}<option value="{{ b.id }}" {{ 'selected' if current and b.id == current.id }}>{{ b.name }}</option>{% endfor %}
+  </select>
+  <div class="segmented">
+    {% for d in periods %}<a href="?{{ 'bot=' ~ current.id ~ '&' if current }}days={{ d }}" class="{{ 'on' if s.days == d }}">{{ d }} dias</a>{% endfor %}
+  </div>
+  <noscript><button class="btn btn-sm btn-secondary">Ver</button></noscript>
+  <input type="hidden" name="days" value="{{ s.days }}">
+</form>
+
+<div class="kpis kpis-4">
+  <div class="kpi"><div class="kpi-top"><span class="kpi-label">Publicadas no Telegram</span><span class="kpi-icon info">{{ icon('send') }}</span></div>
+    <span class="kpi-value">{{ s.total }}</span><span class="kpi-sub">últimos {{ s.days }} dias</span></div>
+  <div class="kpi"><div class="kpi-top"><span class="kpi-label">Enviadas no WhatsApp</span><span class="kpi-icon ok">{{ icon('phone') }}</span></div>
+    <span class="kpi-value">{{ s.wa_total }}</span><span class="kpi-sub">últimos {{ s.days }} dias</span></div>
+  <div class="kpi"><div class="kpi-top"><span class="kpi-label">Desconto médio</span><span class="kpi-icon warn">{{ icon('percent') }}</span></div>
+    <span class="kpi-value">{{ s.avg_discount ~ '%' if s.avg_discount is not none else '—' }}</span><span class="kpi-sub">das ofertas publicadas</span></div>
+  <div class="kpi"><div class="kpi-top"><span class="kpi-label">Com desconto suspeito {{ help('Ofertas publicadas que o detector de desconto falso marcou (provavelmente publicadas manualmente). Ligue o detector na aba Busca e filtros de cada bot.') }}</span><span class="kpi-icon {{ 'danger' if s.suspicious else 'ok' }}">{{ icon('shield') }}</span></div>
+    <span class="kpi-value">{{ s.suspicious }}</span><span class="kpi-sub">{{ 'vale revisar' if s.suspicious else 'nenhuma' }}</span></div>
+</div>
+
+<section class="card">
+  <div class="chart-head">
+    <h2>Posts por dia</h2>
+    <ul class="legend">
+      {% for key, label in store_names.items() %}<li><span class="swatch s-{{ key }}"></span>{{ label }}</li>{% endfor %}
+    </ul>
+  </div>
+  {% if s.total %}
+  <svg class="chart" viewBox="0 0 {{ s.width }} {{ s.height }}" role="img" aria-label="Posts por dia, por loja, nos últimos {{ s.days }} dias">
+    {% for y, v in s.ticks %}
+      <line class="grid-line" x1="{{ s.plot_left }}" x2="{{ s.plot_right }}" y1="{{ y }}" y2="{{ y }}"></line>
+      <text class="axis-label" x="{{ s.plot_left - 6 }}" y="{{ y + 4 }}" text-anchor="end">{{ v }}</text>
+    {% endfor %}
+    {% for bar in s.bars %}
+      <g class="bar-group">
+        <rect class="hit" x="{{ bar.x - 1 }}" y="0" width="{{ bar.w + 2 }}" height="{{ s.baseline }}"><title>{{ bar.label }}: {{ bar.total }} post{{ 's' if bar.total != 1 }}{% for seg in bar.segments %} · {{ seg.label }} {{ seg.count }}{% endfor %}</title></rect>
+        {% for seg in bar.segments %}
+          <rect class="seg s-{{ seg.store }}" x="{{ bar.x }}" y="{{ seg.y }}" width="{{ bar.w }}" height="{{ seg.h }}" rx="2"><title>{{ bar.label }} · {{ seg.label }}: {{ seg.count }}</title></rect>
+        {% endfor %}
+        {% if bar.show_label %}<text class="axis-label" x="{{ bar.x + bar.w / 2 }}" y="{{ s.height - 6 }}" text-anchor="middle">{{ bar.label }}</text>{% endif %}
+      </g>
+    {% endfor %}
+    <line class="base-line" x1="{{ s.plot_left }}" x2="{{ s.plot_right }}" y1="{{ s.baseline }}" y2="{{ s.baseline }}"></line>
+  </svg>
+  <details class="table-view">
+    <summary>Ver em tabela</summary>
+    <div class="table-wrap"><table class="table">
+      <thead><tr><th>Dia</th>{% for key, label in store_names.items() %}<th class="num">{{ label }}</th>{% endfor %}<th class="num">Total</th></tr></thead>
+      <tbody>{% for bar in s.bars|reverse if bar.total %}
+        {%- set by = {} -%}{%- for seg in bar.segments %}{% set _ = by.update({seg.store: seg.count}) %}{% endfor -%}
+        <tr><td>{{ bar.label }}</td>{% for key in store_names %}<td class="num">{{ by.get(key, 0) }}</td>{% endfor %}<td class="num"><b>{{ bar.total }}</b></td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+  </details>
+  {% else %}
+  <p class="empty-chart">Nenhum post publicado neste período.</p>
+  {% endif %}
+</section>
+
+{% macro hbars(items, kind) -%}
+  {% if items %}
+  <ul class="hbars">
+    {% for it in items %}
+    <li><span class="hbar-label">{{ it.label }}</span>
+      <svg class="hbar" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><rect class="{{ 's-' ~ it.store if kind == 'store' else 's-single' }}" x="0" y="0" width="{{ it.width }}" height="10" rx="1.5"></rect></svg>
+      <b class="hbar-value">{{ it.count }}</b></li>
+    {% endfor %}
+  </ul>
+  {% else %}<p class="empty-chart">Sem dados no período.</p>{% endif %}
+{%- endmacro %}
+
+<div class="grid-2-cards">
+  <section class="card">
+    <h2 class="mb-3">Por loja</h2>
+    {{ hbars(s.stores, 'store') }}
+  </section>
+  <section class="card">
+    <h2 class="mb-3">Tipos de produto que mais saem {{ help('O tipo é reconhecido pelo nome do produto (o mesmo usado para escolher a frase do post).') }}</h2>
+    {{ hbars(s.types, 'type') }}
+  </section>
+  {% if not current %}
+  <section class="card">
+    <h2 class="mb-3">Por bot</h2>
+    {{ hbars(s.bots, 'bot') }}
+  </section>
+  {% endif %}
+  <section class="card">
+    <h2 class="mb-3">Maiores descontos publicados</h2>
+    {% if s.top %}
+    <ul class="top-list">
+      {% for o in s.top %}
+      <li>{% if o.image_url %}<img src="{{ o.image_url }}" alt="" loading="lazy" referrerpolicy="no-referrer">{% else %}<span class="noimg">{{ icon('package') }}</span>{% endif %}
+        <div><a href="{{ o.product_url }}" target="_blank" rel="noopener noreferrer">{{ o.title }}</a>
+          <small>{{ o.price|brl }} · {{ store_names.get(o.platform, o.platform) }}</small></div>
+        {% if o.discount_pct %}<span class="badge badge-discount">-{{ o.discount_pct }}%</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+    {% else %}<p class="empty-chart">Sem dados no período.</p>{% endif %}
+  </section>
+</div>
+{% endblock %}

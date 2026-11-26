@@ -18,12 +18,13 @@ from core.alert_service import OFFERS_HEARTBEAT
 from core.audit import utcnow
 from database import get_db
 from models import AdminUser, OfferBot, OfferPost, OfferStatus, OfferTarget, PromoOffer, TargetChannel
-from offers import amazon, collector, converter, post_template, whatsapp
+from offers import amazon, collector, converter, overview, post_template, whatsapp
 from offers import bots as bot_service
 from offers import config as offer_config
+from offers import stats as offer_stats
 from offers.amazon import AmazonError
 from offers.mercadolivre import MLError
-from offers.posting import whatsapp_caption
+from offers.posting import telegram_caption
 from offers.shopee import SORT_LABELS, ShopeeError
 from offers.whatsapp import WhatsAppError
 
@@ -60,15 +61,59 @@ def _back(bot_id: int, tab: str = "geral") -> str:
 # --------------------------------------------------------------------------- #
 @router.get("/offers/bots", response_class=HTMLResponse)
 def bots_list(request: Request, admin: AdminUser = Depends(current_admin), db: Session = Depends(get_db)):
+    """Central dos bots de promoção: situação de todos os bots numa tela só."""
     bots = db.scalars(select(OfferBot).options(selectinload(OfferBot.targets)).order_by(OfferBot.id)).all()
     values = settings_service.get_all(db)
-    stats = {b.id: collector.stats(b.id) for b in bots}
-    return render(request, "admin/offers_bots.html", admin, bots=bots, stats=stats,
-                  worker_online=alert_service.bot_online(values, key=OFFERS_HEARTBEAT),
+    worker_online = alert_service.bot_online(values, key=OFFERS_HEARTBEAT)
+    now = utcnow()
+    cards = [overview.build(b, bot_service.config_for(db, b), collector.stats(b.id), worker_online, now)
+             for b in bots]
+    totals = {
+        "active": sum(1 for c in cards if c.bot.is_active),
+        "posted_24h": sum(c.stats["posted_24h"] for c in cards),
+        "wa_24h": sum(c.stats["wa_24h"] for c in cards),
+        "queued": sum(c.stats["queued"] for c in cards),
+        "attention": sum(1 for c in cards if c.level in ("warn", "setup")),
+        "groups": sum(c.tg_count + c.wa_count for c in cards),
+    }
+    return render(request, "admin/offers_bots.html", admin, cards=cards, totals=totals,
+                  worker_online=worker_online,
+                  paused_all=any((b.state or {}).get("paused_by_all") for b in bots),
                   credentials_ok=bool((values.get("ml_app_id") and values.get("ml_secret_key"))
                                       or (values.get("shopee_app_id") and values.get("shopee_secret"))
                                       or (values.get("amazon_credential_id") and values.get("amazon_secret"))),
                   sales_bot=settings.telegram_bot_username)
+
+
+@router.post("/offers/bots/pause-all")
+def bots_pause_all(request: Request, _csrf: None = Depends(verify_csrf),
+                   admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
+    bots = db.scalars(select(OfferBot).where(OfferBot.is_active.is_(True)).with_for_update()).all()
+    for b in bots:
+        b.is_active = False
+        b.state = {**(b.state or {}), "paused_by_all": True}
+    audit(db, request, admin, "offer_bots_paused_all", count=len(bots))
+    db.commit()
+    flash(request, f"{len(bots)} bot(s) pausado(s). Nada será publicado até você retomar.", "warn" if bots else "ok")
+    return redirect("/admin/offers/bots")
+
+
+@router.post("/offers/bots/resume-all")
+def bots_resume_all(request: Request, _csrf: None = Depends(verify_csrf),
+                    admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
+    bots = db.scalars(select(OfferBot).options(selectinload(OfferBot.targets)).with_for_update()).all()
+    resumed = 0
+    for b in bots:
+        if not (b.state or {}).get("paused_by_all"):
+            continue
+        b.state = {k: v for k, v in (b.state or {}).items() if k != "paused_by_all"}
+        if any(t.is_active for t in b.targets):
+            b.is_active = True
+            resumed += 1
+    audit(db, request, admin, "offer_bots_resumed_all", count=resumed)
+    db.commit()
+    flash(request, f"{resumed} bot(s) religado(s).")
+    return redirect("/admin/offers/bots")
 
 
 @router.post("/offers/bots/create")
@@ -99,7 +144,9 @@ def bot_page(bot_id: int, request: Request, tab: str = "geral", qr: int = 0,
            "stats": collector.stats(bot.id), "last": collector.last_result(bot),
            "tg_targets": [t for t in bot.targets if t.channel == TargetChannel.TELEGRAM],
            "wa_targets": [t for t in bot.targets if t.channel == TargetChannel.WHATSAPP],
-           "credentials_ok": cfg.sources_ready, "test_results": request.session.pop("offers_test", None)}
+           "credentials_ok": cfg.sources_ready, "test_results": request.session.pop("offers_test", None),
+           "other_bots": db.scalars(select(OfferBot).where(OfferBot.id != bot.id).order_by(OfferBot.id)).all(),
+           "copy_groups": {k: label for k, (label, _) in bot_service.COPY_GROUPS.items()}}
     if tab == "telegram":
         known = {t.target_id for t in bot.targets if t.channel == TargetChannel.TELEGRAM}
         ctx["seen_chats"] = [c for c in (bot.state or {}).get("seen_chats", []) if str(c.get("id")) not in known]
@@ -110,7 +157,7 @@ def bot_page(bot_id: int, request: Request, tab: str = "geral", qr: int = 0,
                    extra_categories=", ".join(c for c in cfg.categories if c not in offer_config.ML_CATEGORIES))
     elif tab == "post":
         ctx.update(placeholders=post_template.PLACEHOLDERS,
-                   template_preview=post_template.render_whatsapp(SAMPLE_POST, cfg.template, cfg.default_headline,
+                   template_preview=post_template.render_telegram(SAMPLE_POST, cfg.template, cfg.default_headline,
                                                                   cfg.footer))
     return render(request, "admin/offer_bot.html", admin, **ctx)
 
@@ -130,19 +177,37 @@ def bot_general(bot_id: int, request: Request, name: str = Form(..., max_length=
     return redirect(_back(bot_id))
 
 
+@router.post("/offers/bots/{bot_id}/copy")
+def bot_copy(bot_id: int, request: Request, source_id: int = Form(...), groups: list[str] = Form(default=[]),
+             _csrf: None = Depends(verify_csrf), admin: AdminUser = Depends(require_superuser),
+             db: Session = Depends(get_db)):
+    bot = _bot(db, bot_id, lock=True)
+    source = _bot(db, source_id)
+    if source.id == bot.id or not groups:
+        flash(request, "Escolha outro bot e pelo menos uma parte para copiar.", "error")
+        return redirect(_back(bot_id))
+    copied = bot_service.copy_config(source, bot, groups)
+    audit(db, request, admin, "offer_bot_config_copied", bot_id=bot.id, source_id=source.id, parts=copied)
+    db.commit()
+    flash(request, f"Copiado de “{source.name}”: {', '.join(copied)}.")
+    return redirect(_back(bot_id))
+
+
 @router.post("/offers/bots/{bot_id}/toggle")
-def bot_toggle(bot_id: int, request: Request, _csrf: None = Depends(verify_csrf),
+def bot_toggle(bot_id: int, request: Request, back: str = Form(""), _csrf: None = Depends(verify_csrf),
                admin: AdminUser = Depends(require_superuser), db: Session = Depends(get_db)):
     bot = _bot(db, bot_id, lock=True)
+    dest = "/admin/offers/bots" if back == "central" else _back(bot_id)
     if not bot.is_active and not any(t.is_active for t in bot.targets):
         flash(request, "Antes de ligar, cadastre pelo menos um destino (canal do Telegram ou grupo do WhatsApp).",
               "error")
-        return redirect(_back(bot_id))
+        return redirect(dest)
     bot.is_active = not bot.is_active
+    bot.state = {k: v for k, v in (bot.state or {}).items() if k != "paused_by_all"}
     audit(db, request, admin, "offer_bot_toggled", bot_id=bot.id, active=bot.is_active)
     db.commit()
     flash(request, f"“{bot.name}” LIGADO." if bot.is_active else f"“{bot.name}” desligado.")
-    return redirect(_back(bot_id))
+    return redirect(dest)
 
 
 @router.post("/offers/bots/{bot_id}/token")
@@ -272,6 +337,7 @@ def bot_search(
     amazon_keywords: str = Form("", max_length=1000),
     amazon_nodes: str = Form("", max_length=300),
     amazon_sort: str = Form("featured", max_length=20),
+    skip_fake: str = Form(""),
     _csrf: None = Depends(verify_csrf),
     admin: AdminUser = Depends(require_superuser),
     db: Session = Depends(get_db),
@@ -310,6 +376,7 @@ def bot_search(
         "shopee_sort": shopee_sort,
         "src_amazon": "1" if src_amazon else "0", "amazon_keywords": amazon_keywords.strip(),
         "amazon_nodes": amazon_nodes.strip(), "amazon_sort": amazon_sort,
+        "skip_fake": "1" if skip_fake else "0",
     })
     audit(db, request, admin, "offer_bot_search_saved", bot_id=bot.id, categories=len(all_categories))
     db.commit()
@@ -575,7 +642,7 @@ def offers_list(request: Request, bot: int | None = None, status: str = "new", p
         stmt = stmt.order_by(PromoOffer.discount_pct.desc().nulls_last(), OfferPost.id.desc())
     posts, pager = paginate(db, stmt, page)
     cfg = bot_service.config_for(db, current)
-    previews = {p.id: whatsapp_caption(p.offer, cfg) for p in posts}
+    previews = {p.id: telegram_caption(p.offer, cfg) for p in posts}
     return render(request, "admin/offers_list.html", admin, bots=bots, current=current, posts=posts, pager=pager,
                   status=status, statuses=[s.value for s in OfferStatus], stats=collector.stats(current.id),
                   previews=previews, wa_ready=whatsapp.wa_config(current, cfg).ready,
@@ -671,6 +738,16 @@ def offer_restore(bot_id: int, offer_id: int, request: Request, _csrf: None = De
                   admin: AdminUser = Depends(current_admin)):
     collector.restore_post(offer_id, bot_id)
     return redirect(_offer_back(request, bot_id))
+
+
+@router.get("/offers/stats", response_class=HTMLResponse)
+def offers_stats(request: Request, bot: int | None = None, days: int = 30,
+                 admin: AdminUser = Depends(current_admin), db: Session = Depends(get_db)):
+    bots = db.scalars(select(OfferBot).order_by(OfferBot.id)).all()
+    current = next((b for b in bots if b.id == bot), None)
+    data = offer_stats.build(db, current.id if current else None, days, utcnow())
+    return render(request, "admin/offers_stats.html", admin, bots=bots, current=current, s=data,
+                  periods=offer_stats.PERIODS, store_names=dict(offer_stats.STORES))
 
 
 # --------------------------------------------------------------------------- #

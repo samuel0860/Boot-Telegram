@@ -77,10 +77,21 @@ O **Dashboard** mostra o checklist "Primeiros passos" com o que ainda falta (cad
 - **Conteúdos**: o que é entregue após o pagamento: grupo/canal do Telegram, link, arquivo, foto, vídeo ou texto.
 - **Categorias**: organizam os conteúdos na lista "Ver conteúdo disponível" do bot.
 
-**Ofertas · afiliados**
-- **Bots de ofertas**: a lista dos seus bots de ofertas. Cada um tem as abas *Geral*, *Telegram* (token e canais), *WhatsApp* (número e grupos), *Busca e filtros* e *Modelo do post*.
-- **Ofertas**: o que cada bot encontrou (escolha o bot no topo). Dá para definir a **chamada**, o **cupom** e o link de afiliado, ver a **prévia do post**, publicar ou descartar.
-- **Mercado Livre**: a conta da API (App ID e Secret Key), usada por todos os bots de ofertas.
+**Grupos de promoção · afiliados**
+- **Central dos bots**: a situação de todos os bots numa tela só. Cada bot aparece num cartão com uma etiqueta colorida:
+  - 🟢 **Funcionando** · 🟡 **Precisa de atenção** (os avisos aparecem no cartão) · 🔵 **Configuração incompleta** (mostra o que falta, com link direto para resolver) · ⚪ **Desligado**.
+  - Em cada cartão: posts nas últimas 24h, fila, quando foi o último post e quando é a próxima busca, e os botões **Ofertas**, **Configurar**, **Buscar agora** e **Ligar/Desligar**.
+  - **Pausar todos** desliga todos os bots de uma vez (manutenção, feriado). **Retomar os que eu pausei** religa só os que estavam ligados antes.
+- **Bots de promoção**: cada bot tem as abas *Geral*, *Telegram* (token e canais), *WhatsApp* (número e grupos), *Busca e filtros* e *Modelo do post*. Na aba *Geral* dá para **copiar a configuração de outro bot** (busca e filtros, modelo do post e/ou ritmo do WhatsApp); token, canais e número não são copiados.
+- **Ofertas encontradas**: o que cada bot encontrou (escolha o bot no topo). Em cada oferta:
+  - **Publicar** (Telegram + WhatsApp, só um deles) ou **Descartar**;
+  - **Chamada, cupom e link** abre os campos para editar antes de publicar;
+  - **Ver como fica no grupo** mostra o post com foto e formatação, como o grupo vai ver;
+  - o quadro **Postar produto pelo link**, no topo, publica um produto que você escolheu (seção 7).
+- **Estatísticas**: posts por dia (por loja), por bot, os **tipos de produto que mais saem** e os maiores descontos publicados, nos últimos 7, 30 ou 90 dias. “Ver em tabela” mostra os números do gráfico.
+- **Lojas e APIs**: as contas do Mercado Livre, da Shopee e da Amazon, usadas por todos os bots.
+
+Nos campos mais difíceis há um **?**: passe o mouse (ou toque) para ver a explicação.
 
 **Sistema**
 - **Histórico**: registro de tudo (liberações, logins, alterações). Útil para saber "quem mudou o quê".
@@ -97,7 +108,7 @@ Você pode ter **quantos bots de ofertas quiser**. Cada um tem o próprio bot do
 - **Amazon:** em https://associados.amazon.com.br → **Ferramentas → Creators API → Criar credencial**, copie o **Credential ID**, o **Credential Secret** e a **versão**; o **Partner Tag** é o seu ID de associado (termina em `-20`) → **Salvar** → **Testar**. O link de afiliado também vem pronto. A Amazon só libera a API para associados com vendas qualificadas recentes.
 
 **Para cada bot de ofertas:**
-1. Painel → **Bots de ofertas** → digite o nome → **Criar bot**.
+1. Painel → **Central dos bots** → digite o nome em **Novo bot de promoção** → **Criar bot**. (Dica: na aba *Geral* do bot novo, use **Copiar configuração** de um bot que já funciona.)
 2. Aba **Telegram**:
    - No Telegram, abra o **@BotFather**, mande `/newbot` e crie um bot **só para ofertas** (não use o @lgr_ebac_bot, que é o de vendas).
    - Cole o token no painel → **Salvar token**.
@@ -111,6 +122,8 @@ Você pode ter **quantos bots de ofertas quiser**. Cada um tem o próprio bot do
 
 - **Modo automático:** publica sozinho.
 - **Modo manual:** as ofertas ficam em **Ofertas → Aguardando** para você aprovar.
+
+**Detector de desconto falso** (aba *Busca e filtros*, ligado por padrão): o sistema guarda o preço de cada produto todo dia. Se a loja anuncia “50% OFF”, mas o preço “com desconto” é o mesmo que ela já cobrava nos últimos dias (o “De” foi inflado), a oferta ganha o aviso **Desconto suspeito** e o bot **não a publica sozinho**. Ela continua na lista e você pode publicar manualmente se quiser. O detector precisa de alguns dias de histórico de cada produto para começar a julgar.
 
 **Modelo do post:** cada bot tem o seu (aba *Modelo do post*), usado no Telegram e no WhatsApp. O padrão é:
 
