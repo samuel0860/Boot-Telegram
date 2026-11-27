@@ -52,6 +52,7 @@ DEFAULTS: dict[str, str] = {
     "tiktok_refresh_token": "",
     "tiktok_access_expires": "",          # unix (segundos)
     "tiktok_creator": "",                 # nome da conta conectada
+    "shopee_report": "",                  # cache do relatório de pedidos/comissão da Shopee (JSON)
     "offers_heartbeat_at": "",
     # MÓDULO DE VENDAS
     "bot_heartbeat_at": "",

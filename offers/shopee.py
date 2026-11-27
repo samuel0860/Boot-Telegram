@@ -192,6 +192,29 @@ class ShopeeClient:
             raise ShopeeError(f"Shopee respondeu HTTP {r.status_code}")
         return data.get("data") or {}
 
+    # ------------------------------------------------------------ relatório
+    def conversion_report(self, start_ts: int, end_ts: int, *, max_pages: int = 20) -> list[dict]:
+        """Conversões (pedidos) feitas pelos SEUS links no período (unix). A API não informa cliques.
+
+        Pagina pelo scrollId (vale ~30 s: as páginas seguintes são pedidas logo em seguida)."""
+        fields = ("purchaseTime conversionId totalCommission utmContent "
+                  "orders { orderId orderStatus items { itemId itemName qty itemTotalCommission } }")
+        nodes: list[dict] = []
+        scroll = ""
+        for _ in range(max_pages):
+            args = f"purchaseTimeStart: {int(start_ts)}, purchaseTimeEnd: {int(end_ts)}, limit: 500"
+            if scroll:
+                args += f", scrollId: {_gql_str(scroll)}"
+            data = self._query(f"{{ conversionReport({args}) {{ nodes {{ {fields} }} "
+                               f"pageInfo {{ hasNextPage scrollId }} }} }}")
+            report = data.get("conversionReport") or {}
+            nodes += report.get("nodes") or []
+            page = report.get("pageInfo") or {}
+            scroll = page.get("scrollId") or ""
+            if not page.get("hasNextPage") or not scroll:
+                break
+        return nodes
+
     # --------------------------------------------------------------- fontes
     def offers(self, *, keyword: str | None = None, category_id: int | None = None, sort: str = "sales",
                limit: int = 20, page: int = 1, source: str | None = None) -> list[Product]:

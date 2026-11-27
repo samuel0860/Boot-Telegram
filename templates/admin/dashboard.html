@@ -1,5 +1,5 @@
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import status, page_header with context %}
+{% from "admin/_macros.html" import status, page_header, csrf with context %}
 {% from "admin/_icons.html" import icon with context %}
 {% block title %}Dashboard{% endblock %}
 {% block content %}
@@ -46,13 +46,33 @@
 {# ---------------- Números ---------------- #}
 <h2 class="section-title">Vendas · bot próprio</h2>
 <div class="kpis">
-  <div class="kpi"><div class="kpi-top"><span class="kpi-label">Receita (30 dias)</span><span class="kpi-icon ok">{{ icon('trending') }}</span></div>
+  <div class="kpi"><div class="kpi-top"><span class="kpi-label">Receita do bot de vendas (30 dias)</span><span class="kpi-icon ok">{{ icon('trending') }}</span></div>
     <span class="kpi-value">{{ stats.revenue_30d|brl }}</span><span class="kpi-sub">{{ stats.paid_30d }} venda{{ 's' if stats.paid_30d != 1 }}</span></div>
   <div class="kpi"><div class="kpi-top"><span class="kpi-label">Usuários no bot</span><span class="kpi-icon info">{{ icon('users') }}</span></div>
     <span class="kpi-value">{{ stats.users }}</span><span class="kpi-sub">+{{ stats.users_30d }} nos últimos 30 dias</span></div>
   <div class="kpi"><div class="kpi-top"><span class="kpi-label">Acessos ativos</span><span class="kpi-icon ok">{{ icon('repeat') }}</span></div>
     <span class="kpi-value">{{ stats.active_subs }}</span><span class="kpi-sub">{{ stats.pending_orders }} pedido{{ 's' if stats.pending_orders != 1 }} aguardando PIX</span></div>
 </div>
+
+{% if shopee %}
+{%- set r = shopee.report -%}
+<div class="page-header mb-3"><h2 class="section-title mb-0">Resultado na Shopee · seus links de afiliado</h2>
+  <form method="post" action="/admin/offers/stats/shopee-refresh">{{ csrf() }}<input type="hidden" name="back" value="/admin/">
+    <button class="btn btn-sm btn-secondary" data-loading="Atualizando...">{{ icon('repeat') }}Atualizar agora</button></form></div>
+{% if shopee.today %}
+<div class="kpis">
+  <div class="kpi"><div class="kpi-top"><span class="kpi-label">Pedidos hoje</span><span class="kpi-icon ok">{{ icon('cart') }}</span></div>
+    <span class="kpi-value">{{ shopee.today.orders }}</span><span class="kpi-sub">{% if shopee.today.cancelled %}{{ shopee.today.cancelled }} cancelado(s) · {% endif %}cliques: veja no app da Shopee</span></div>
+  <div class="kpi"><div class="kpi-top"><span class="kpi-label">Comissão estimada hoje</span><span class="kpi-icon ok">{{ icon('dollar') }}</span></div>
+    <span class="kpi-value">{{ shopee.today.commission|brl }}</span><span class="kpi-sub">pendentes + concluídos</span></div>
+  <div class="kpi"><div class="kpi-top"><span class="kpi-label">Últimos 7 dias</span><span class="kpi-icon info">{{ icon('trending') }}</span></div>
+    <span class="kpi-value">{{ shopee.week.commission|brl }}</span><span class="kpi-sub">{{ shopee.week.orders }} pedido{{ 's' if shopee.week.orders != 1 }} · <a href="/admin/offers/stats">detalhes</a></span></div>
+</div>
+<p class="hint mb-3">{{ icon('info') }} Atualizado {{ r.fetched_at|ago }}. A Shopee costuma mostrar o pedido no relatório alguns minutos depois da compra; a comissão só é paga quando o pedido é concluído.</p>
+{% else %}
+<div class="alert alert-warn">{{ icon('alert') }}<span>Não consegui ler o relatório da Shopee{% if r.error %}: {{ r.error }}{% endif %}. Clique em “Atualizar agora” ou confira as credenciais em <a href="/admin/offers/settings">Lojas e APIs</a>.</span></div>
+{% endif %}
+{% endif %}
 
 <h2 class="section-title">Ofertas · afiliados</h2>
 <div class="kpis">

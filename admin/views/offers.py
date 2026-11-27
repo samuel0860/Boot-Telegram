@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import secrets
+from datetime import timedelta
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -19,7 +20,7 @@ from core.alert_service import OFFERS_HEARTBEAT
 from core.audit import utcnow
 from database import get_db
 from models import AdminUser, OfferBot, OfferPost, OfferStatus, OfferTarget, PromoOffer, TargetChannel
-from offers import amazon, collector, converter, overview, post_template, tiktok, whatsapp
+from offers import amazon, collector, converter, overview, post_template, shopee_report, tiktok, whatsapp
 from offers import bots as bot_service
 from offers import config as offer_config
 from offers import stats as offer_stats
@@ -778,14 +779,49 @@ def offer_restore(bot_id: int, offer_id: int, request: Request, _csrf: None = De
     return redirect(_offer_back(request, bot_id))
 
 
+def shopee_report_for(db: Session, force: bool = False):
+    """Relatório de pedidos/comissão da Shopee da conta (None se a Shopee não está configurada)."""
+    values = settings_service.get_all(db)
+    if not (values.get("shopee_app_id") and values.get("shopee_secret")):
+        return None
+    cfg = offer_config.parse({}, **bot_service.store_kwargs(values))
+    report = shopee_report.load(db, lambda: shopee_client_factory(cfg), force=force)
+    db.commit()
+    return report
+
+
+def shopee_summary(db: Session, report, days: int) -> dict | None:
+    if report is None or not report.available:
+        return None
+    today = utcnow().astimezone(offer_config.TZ).date()
+    names = {b.id: b.name for b in db.scalars(select(OfferBot))}
+    return shopee_report.summarize(report.rows, today - timedelta(days=days - 1), today, names)
+
+
 @router.get("/offers/stats", response_class=HTMLResponse)
 def offers_stats(request: Request, bot: int | None = None, days: int = 30,
                  admin: AdminUser = Depends(current_admin), db: Session = Depends(get_db)):
     bots = db.scalars(select(OfferBot).order_by(OfferBot.id)).all()
     current = next((b for b in bots if b.id == bot), None)
     data = offer_stats.build(db, current.id if current else None, days, utcnow())
+    report = shopee_report_for(db)
     return render(request, "admin/offers_stats.html", admin, bots=bots, current=current, s=data,
-                  periods=offer_stats.PERIODS, store_names=dict(offer_stats.STORES))
+                  periods=offer_stats.PERIODS, store_names=dict(offer_stats.STORES),
+                  shopee=report, shopee_period=shopee_summary(db, report, data.days),
+                  shopee_today=shopee_summary(db, report, 1))
+
+
+@router.post("/offers/stats/shopee-refresh")
+def offers_stats_refresh(request: Request, back: str = Form("/admin/offers/stats"), _csrf: None = Depends(verify_csrf),
+                         admin: AdminUser = Depends(current_admin), db: Session = Depends(get_db)):
+    report = shopee_report_for(db, force=True)
+    if report is None:
+        flash(request, "Configure a Shopee em Lojas e APIs para ver os pedidos e a comissão.", "error")
+    elif report.error:
+        flash(request, f"Não consegui ler o relatório da Shopee: {report.error}", "error")
+    else:
+        flash(request, "Resultado da Shopee atualizado.")
+    return redirect(back if back.startswith("/admin/") else "/admin/offers/stats")
 
 
 # --------------------------------------------------------------------------- #

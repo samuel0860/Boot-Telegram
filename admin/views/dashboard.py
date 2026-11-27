@@ -106,7 +106,13 @@ def dashboard(request: Request, admin: AdminUser = Depends(current_admin), db: S
         (offers["active"] > 0, "Primeiro bot de ofertas ligado",
          "Token do Telegram e/ou WhatsApp, destinos e filtros.", "/admin/offers/bots", "Configurar", True, "ofertas"),
     ]
-    return render(request, "admin/dashboard.html", admin, stats=stats, recent=recent,
+    from admin.views.offers import shopee_report_for, shopee_summary
+
+    report = shopee_report_for(db)
+    shopee = None
+    if report is not None:
+        shopee = {"report": report, "today": shopee_summary(db, report, 1), "week": shopee_summary(db, report, 7)}
+    return render(request, "admin/dashboard.html", admin, stats=stats, recent=recent, shopee=shopee,
                   payments_configured=settings.payments_configured, gateway=settings.payment_gateway_label,
                   webhook_configured=bool(settings.mp_webhook_secret),
                   setup=setup, setup_done=sum(1 for s in setup if s[0]), sales_online=sales_on,

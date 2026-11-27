@@ -1012,3 +1012,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 @media (max-width: 600px) { .credential div { grid-template-columns: 1fr; gap: 2px; } }
 .badge-store-tiktok { background: rgba(254, 44, 85, .12); color: #ff6b8a; border: 1px solid rgba(254, 44, 85, .3); }
 .s-tiktok { fill: #d28e05; background: #d28e05; }
+.shopee-result { border-color: rgba(231, 102, 36, .4); }
+.shopee-result .kpi { padding: 12px 14px; }
+.status-list { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; }
+.shopee-result .hbars li { grid-template-columns: minmax(0, 1fr) 54px 84px; }

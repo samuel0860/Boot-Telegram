@@ -1,5 +1,5 @@
 {% extends "admin/base.html" %}
-{% from "admin/_macros.html" import page_header, help with context %}
+{% from "admin/_macros.html" import page_header, help, csrf with context %}
 {% from "admin/_icons.html" import icon with context %}
 {% block title %}Estatísticas{% endblock %}
 {% block content %}
@@ -30,6 +30,46 @@
   <div class="kpi"><div class="kpi-top"><span class="kpi-label">Com desconto suspeito {{ help('Ofertas publicadas que o detector de desconto falso marcou (provavelmente publicadas manualmente). Ligue o detector na aba Busca e filtros de cada bot.') }}</span><span class="kpi-icon {{ 'danger' if s.suspicious else 'ok' }}">{{ icon('shield') }}</span></div>
     <span class="kpi-value">{{ s.suspicious }}</span><span class="kpi-sub">{{ 'vale revisar' if s.suspicious else 'nenhuma' }}</span></div>
 </div>
+
+{% if shopee %}
+<section class="card shopee-result">
+  <div class="chart-head">
+    <h2>Resultado na Shopee · últimos {{ s.days }} dias</h2>
+    <form method="post" action="/admin/offers/stats/shopee-refresh">{{ csrf() }}<input type="hidden" name="back" value="/admin/offers/stats?{{ 'bot=' ~ current.id ~ '&' if current }}days={{ s.days }}">
+      <button class="btn btn-sm btn-secondary" data-loading="Atualizando...">{{ icon('repeat') }}Atualizar agora</button></form>
+  </div>
+  {% if shopee_period %}
+  <div class="kpis kpis-4">
+    <div class="kpi"><span class="kpi-label">Pedidos hoje</span><span class="kpi-value">{{ shopee_today.orders }}</span><span class="kpi-sub">{{ shopee_today.commission|brl }} de comissão</span></div>
+    <div class="kpi"><span class="kpi-label">Pedidos no período</span><span class="kpi-value">{{ shopee_period.orders }}</span><span class="kpi-sub">{{ shopee_period.cancelled }} cancelado(s) fora da conta</span></div>
+    <div class="kpi"><span class="kpi-label">Comissão estimada</span><span class="kpi-value">{{ shopee_period.commission|brl }}</span><span class="kpi-sub">pendentes + concluídos</span></div>
+    <div class="kpi"><span class="kpi-label">Situação dos pedidos {{ help('Pendente: a compra ainda não foi concluída. Concluído: a comissão está garantida. Cancelado: não paga.') }}</span>
+      <span class="kpi-sub status-list">{% for label, n in shopee_period.by_status %}<span>{{ label }} <b>{{ n }}</b></span>{% else %}<span>sem pedidos</span>{% endfor %}</span></div>
+  </div>
+  <div class="grid-2-cards">
+    <div>
+      <h3 class="mb-3">Por bot, canal e horário {{ help('Vem das marcações do link (sub_id). Ligue “Medir por grupo e horário” na aba Busca e filtros de cada bot. Pedidos de links sem marcação aparecem como “—”.') }}</h3>
+      {% if shopee_period.groups %}
+      <div class="table-wrap"><table>
+        <thead><tr><th>Bot</th><th>Canal</th><th>Hora</th><th class="num">Pedidos</th><th class="num">Comissão</th></tr></thead>
+        <tbody>{% for g, n, c in shopee_period.groups %}<tr><td>{{ g[0] }}</td><td>{{ g[1] }}</td><td>{{ g[2] }}</td><td class="num">{{ n }}</td><td class="num">{{ c|brl }}</td></tr>{% endfor %}</tbody>
+      </table></div>
+      {% if not shopee_period.tracked %}<p class="hint mt-2">{{ icon('info') }} Nenhum pedido com marcação ainda. Ligue “Medir por grupo e horário” nos bots para separar por grupo e horário.</p>{% endif %}
+      {% else %}<p class="empty-chart">Sem pedidos no período.</p>{% endif %}
+    </div>
+    <div>
+      <h3 class="mb-3">Produtos que mais renderam</h3>
+      {% if shopee_period.products %}
+      <ul class="hbars">{% for name, qty, c in shopee_period.products %}<li><span class="hbar-label" title="{{ name }}">{{ name }}</span><span class="muted-inline">{{ qty }} un.</span><b class="hbar-value">{{ c|brl }}</b></li>{% endfor %}</ul>
+      {% else %}<p class="empty-chart">Sem pedidos no período.</p>{% endif %}
+    </div>
+  </div>
+  <p class="hint mt-3">{{ icon('info') }} Fonte: relatório de conversões da API de afiliados da Shopee, atualizado {{ shopee.fetched_at|ago }}. A API não informa cliques: esses aparecem só no app da Shopee.</p>
+  {% else %}
+  <div class="alert alert-warn mb-0">{{ icon('alert') }}<span>Não consegui ler o relatório da Shopee{% if shopee.error %}: {{ shopee.error }}{% endif %}.</span></div>
+  {% endif %}
+</section>
+{% endif %}
 
 <section class="card">
   <div class="chart-head">
