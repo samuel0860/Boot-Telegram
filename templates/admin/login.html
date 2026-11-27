@@ -3,7 +3,7 @@
 {% block title %}Entrar{% endblock %}
 {% block auth %}
 <section class="auth-aside" aria-hidden="true">
-  <div class="auth-logo"><span class="brand-mark">{{ icon('zap') }}</span>Telegram Vendas</div>
+  <div class="auth-logo"><span class="brand-mark">{{ icon('zap') }}</span>{{ app_name }}</div>
 
   <div class="auth-pitch">
     <h2>Suas vendas e ofertas,<br><em>num só painel.</em></h2>
@@ -12,18 +12,18 @@
       <li><span class="auth-feature-ic">{{ icon('cart') }}</span>
         <span><b>Vendas automáticas</b>Pagamento PIX confirmado e acesso liberado na hora.</span></li>
       <li><span class="auth-feature-ic">{{ icon('megaphone') }}</span>
-        <span><b>Bots de ofertas</b>Mercado Livre e Shopee publicados nos seus grupos.</span></li>
+        <span><b>Bots de ofertas</b>Shopee, Mercado Livre, Amazon e TikTok Shop publicados nos seus grupos.</span></li>
       <li><span class="auth-feature-ic">{{ icon('shield') }}</span>
         <span><b>Acesso protegido</b>Senha forte, verificação em duas etapas e histórico de ações.</span></li>
     </ul>
   </div>
 
-  <div class="auth-copy">Telegram Vendas · Área restrita a administradores</div>
+  <div class="auth-copy">{{ app_name }} · Área restrita</div>
 </section>
 
 <section class="auth-panel">
   <div class="auth-card">
-    <div class="auth-logo"><span class="brand-mark">{{ icon('zap') }}</span>Telegram Vendas</div>
+    <div class="auth-logo"><span class="brand-mark">{{ icon('zap') }}</span>{{ app_name }}</div>
 
     {% for f in flashes %}
       <div class="alert alert-{{ f.kind }}">{{ icon('check' if f.kind == 'ok' else 'alert') }}<span>{{ f.message }}</span></div>

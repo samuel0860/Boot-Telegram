@@ -20,7 +20,7 @@ from core.alert_service import OFFERS_HEARTBEAT
 from core.audit import utcnow
 from database import get_db
 from models import AdminUser, OfferBot, OfferPost, OfferStatus, OfferTarget, PromoOffer, TargetChannel
-from offers import amazon, collector, converter, overview, post_template, shopee_report, tiktok, whatsapp
+from offers import amazon, collector, converter, finance, overview, post_template, shopee_report, tiktok, whatsapp
 from offers import bots as bot_service
 from offers import config as offer_config
 from offers import stats as offer_stats
@@ -809,6 +809,21 @@ def offers_stats(request: Request, bot: int | None = None, days: int = 30,
                   periods=offer_stats.PERIODS, store_names=dict(offer_stats.STORES),
                   shopee=report, shopee_period=shopee_summary(db, report, data.days),
                   shopee_today=shopee_summary(db, report, 1))
+
+
+@router.get("/finance", response_class=HTMLResponse)
+def finance_page(request: Request, period: str = "mes", admin: AdminUser = Depends(current_admin),
+                 db: Session = Depends(get_db)):
+    """FINANCEIRO: comissões de afiliado + vendas do bot, com previsão do mês."""
+    values = settings_service.get_all(db)
+    report = shopee_report_for(db)
+    data = finance.build(
+        db, report.rows if report and report.available else None, period, utcnow(),
+        shopee_connected=report is not None,
+        other_stores={"Mercado Livre": bool(values.get("ml_app_id")),
+                      "Amazon": bool(values.get("amazon_credential_id")),
+                      "TikTok Shop": bool(values.get("tiktok_refresh_token"))})
+    return render(request, "admin/finance.html", admin, f=data, periods=finance.PERIODS, report=report)
 
 
 @router.post("/offers/stats/shopee-refresh")

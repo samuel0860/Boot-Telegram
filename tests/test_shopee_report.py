@@ -109,3 +109,36 @@ def test_panel_shows_shopee_result(fake_client):
             assert "Não consegui ler o relatório da Shopee" in r.text
     finally:
         views.shopee_client_factory = old
+
+
+def test_finance_summary_and_page(fake_client):
+    from admin.auth import hash_password
+    from admin.views import offers as views
+    from app import app
+    from models import AdminUser
+    from offers import finance
+
+    rows = shopee_report.to_rows(PAGES[0] + PAGES[1])
+    with session_scope() as s:
+        f = finance.build(s, rows, "7", utcnow(), shopee_connected=True, other_stores={"Amazon": False})
+    assert f["pending"] == Decimal("11.50") and f["confirmed"] == Decimal("4.80") and f["cancelled"] == Decimal("7.00")
+    assert f["total"] == Decimal("16.30") and f["orders"] == 3 and f["chart"] and f["products"][0][0] == "Air Fryer Mondial"
+    with session_scope() as s:
+        month = finance.build(s, rows, "mes", utcnow())
+    assert month["forecast"] is not None
+
+    configure_shopee()
+    with session_scope() as s:
+        s.add(AdminUser(username="admin", password_hash=hash_password("SenhaForte123"), is_superuser=True))
+    old = views.shopee_client_factory
+    views.shopee_client_factory = FakeReport().factory()
+    try:
+        with TestClient(app) as c:
+            tok = re.search(r'name="csrf_token" value="([^"]+)"', c.get("/admin/login").text).group(1)
+            c.post("/admin/login", data={"username": "admin", "password": "SenhaForte123", "csrf_token": tok})
+            page = c.get("/admin/finance?period=7").text
+            assert "Financeiro" in page and "Comissão garantida" in page and "R$\xa016,30" in page
+            assert "Ganhos por dia" in page and "Air Fryer Mondial" in page
+            assert c.get("/admin/finance?period=hoje").status_code == 200
+    finally:
+        views.shopee_client_factory = old

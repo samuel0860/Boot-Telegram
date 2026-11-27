@@ -19,14 +19,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="robots" content="noindex, nofollow">
-  <title>{% block title %}Painel{% endblock %} · Telegram Vendas</title>
+  <title>{% block title %}Painel{% endblock %} · {{ app_name }}</title>
   <link rel="icon" href="/static/images/favicon.svg" type="image/svg+xml">
   <link rel="manifest" href="/admin/manifest.webmanifest">
-  <meta name="theme-color" content="#0b0e14">
+  <meta name="theme-color" content="#13122b">
+  <script src="/static/js/theme.js"></script>
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="Painel Bots">
+  <meta name="apple-mobile-web-app-title" content="{{ app_name }}">
   <link rel="apple-touch-icon" href="/static/pwa/apple-touch-icon.png">
   <link rel="stylesheet" href="/static/css/admin.css">
   {% block head %}{% endblock %}
@@ -37,10 +38,11 @@
   <aside class="sidebar" id="sidebar">
     <a class="brand" href="/admin/">
       <span class="brand-mark">{{ icon('zap') }}</span>
-      <span class="brand-text">Telegram Vendas<small>Painel administrativo</small></span>
+      <span class="brand-text">{{ app_name }}<small>Bots de ofertas e vendas</small></span>
     </a>
     <nav class="nav" aria-label="Menu principal">
       {{ navlink('/admin/', 'dashboard', 'Dashboard') }}
+      {{ navlink('/admin/finance', 'wallet', 'Financeiro') }}
 
       {#- ================= MÓDULO 1: BOT DE VENDAS ================= -#}
       <div class="nav-module mod-sales">
@@ -125,6 +127,7 @@
         <span class="module-pill mod-sales">{{ icon('cart') }}Bot de vendas</span>
       {%- endif %}
       <span class="topbar-title">{{ self.title() }}</span>
+      <button type="button" class="icon-btn theme-toggle" id="theme-toggle" aria-label="Alternar tema claro/escuro" title="Tema claro/escuro">{{ icon('moon', 'i-moon') }}{{ icon('sun', 'i-sun') }}</button>
       <button type="button" class="btn btn-sm install-btn" data-install hidden>{{ icon('download') }}<span>Instalar</span></button>
     </header>
     <main class="content">
@@ -145,7 +148,7 @@
 <nav class="tabbar" aria-label="Navegação principal">
   <a href="/admin/" class="{{ 'on' if bp in ('/admin/', '/admin') }}">{{ icon('dashboard') }}<span>Início</span></a>
   <a href="/admin/offers/bots" class="{{ 'on' if bp.startswith('/admin/offers/bots') }}">{{ icon('zap') }}<span>Bots</span></a>
-  <a href="/admin/offers" class="{{ 'on' if bp == '/admin/offers' }}">{{ icon('tag') }}<span>Ofertas</span></a>
+  <a href="/admin/finance" class="{{ 'on' if bp == '/admin/finance' }}">{{ icon('wallet') }}<span>Ganhos</span></a>
   <a href="/admin/orders" class="{{ 'on' if bp.startswith(('/admin/orders', '/admin/payments', '/admin/subscriptions', '/admin/users')) }}">{{ icon('cart') }}<span>Vendas</span></a>
   <button type="button" id="tabbar-menu">{{ icon('menu') }}<span>Menu</span></button>
 </nav>
@@ -166,7 +169,7 @@
       <li><span class="n">1</span><span>Abra este endereço no <b>Safari</b> (no Chrome do iPhone também funciona, pelo botão de compartilhar ao lado do endereço).</span></li>
       <li><span class="n">2</span><span>Toque em <b>Compartilhar</b> <span class="ios-share" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m8 7 4-4 4 4"/><path d="M6 11H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-8a1 1 0 0 0-1-1h-1"/></svg></span> na barra de baixo.</span></li>
       <li><span class="n">3</span><span>Role a lista e toque em <b>Adicionar à Tela de Início</b>.</span></li>
-      <li><span class="n">4</span><span>Toque em <b>Adicionar</b>. Pronto: o app <b>Painel Bots</b> aparece na tela inicial.</span></li>
+      <li><span class="n">4</span><span>Toque em <b>Adicionar</b>. Pronto: o app <b>{{ app_name }}</b> aparece na tela inicial.</span></li>
     </ol>
   </div>
   <div class="sheet-other">

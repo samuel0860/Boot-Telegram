@@ -1,0 +1,127 @@
+{% extends "admin/base.html" %}
+{% from "admin/_macros.html" import page_header, help, csrf with context %}
+{% from "admin/_icons.html" import icon with context %}
+{% block title %}Financeiro{% endblock %}
+{% block content %}
+{% call page_header('Financeiro', 'Quanto você ganhou: comissões de afiliado e vendas do bot, num lugar só.') %}
+  <form method="post" action="/admin/offers/stats/shopee-refresh">{{ csrf() }}<input type="hidden" name="back" value="/admin/finance?period={{ f.period }}">
+    <button class="btn btn-secondary" data-loading="Atualizando...">{{ icon('repeat') }}Atualizar</button></form>
+{% endcall %}
+
+<div class="segmented mb-3">
+  {% for k, label in periods.items() %}<a href="?period={{ k }}" class="{{ 'on' if f.period == k }}">{{ label }}</a>{% endfor %}
+</div>
+
+{% if report and report.error and not report.available %}
+<div class="alert alert-warn">{{ icon('alert') }}<span>Não consegui ler o relatório da Shopee: {{ report.error }}</span></div>
+{% elif not report %}
+<div class="alert alert-info">{{ icon('info') }}<span>Configure a Shopee em <a href="/admin/offers/settings">Lojas e APIs</a> para as comissões aparecerem aqui.</span></div>
+{% endif %}
+
+<div class="fin-hero">
+  <div class="fin-total">
+    <span class="lbl">Ganho estimado · {{ f.label|lower }}</span>
+    <span class="big">{{ f.total|brl }}</span>
+    <span class="sub">{{ f.start.strftime('%d/%m') }}{% if f.start != f.end %} a {{ f.end.strftime('%d/%m') }}{% endif %} · média de {{ f.avg_day|brl }} por dia</span>
+    <div class="split">
+      <span>Comissões de afiliado<b>{{ (f.confirmed + f.pending)|brl }}</b></span>
+      <span>Vendas do bot (PIX)<b>{{ f.sales|brl }}</b></span>
+      <span>Pedidos de afiliado<b>{{ f.orders }}</b></span>
+    </div>
+  </div>
+  <div class="fin-side">
+    {% if f.forecast is not none %}
+    <div class="fin-mini"><span>Previsão para o mês {{ help('Estimativa: a média por dia até hoje vezes os dias do mês. Não é garantia.') }}</span><b>{{ f.forecast|brl }}</b></div>
+    {% endif %}
+    <div class="fin-mini"><span>Vendas do bot aprovadas</span><b>{{ f.sales_count }}</b></div>
+    <div class="fin-mini"><span>Perdido em cancelamentos</span><b>{{ f.cancelled|brl }}</b></div>
+  </div>
+</div>
+
+<div class="fin-status">
+  <div class="kpi ok"><span class="kpi-label">Comissão garantida {{ help('Pedidos concluídos: a Shopee paga essa comissão no ciclo de pagamento dela.') }}</span>
+    <span class="kpi-value money">{{ f.confirmed|brl }}</span><span class="kpi-sub">pedidos concluídos</span></div>
+  <div class="kpi warn"><span class="kpi-label">Comissão pendente {{ help('Pedidos ainda não concluídos (em entrega, aguardando confirmação). Pode virar garantida ou ser cancelada.') }}</span>
+    <span class="kpi-value">{{ f.pending|brl }}</span><span class="kpi-sub">aguardando conclusão</span></div>
+  <div class="kpi lost"><span class="kpi-label">Cancelada</span>
+    <span class="kpi-value">{{ f.cancelled|brl }}</span><span class="kpi-sub">{{ f.cancelled_orders }} pedido{{ 's' if f.cancelled_orders != 1 }} · não paga</span></div>
+</div>
+
+{% if f.chart %}
+<section class="card">
+  <div class="chart-head">
+    <h2>Ganhos por dia</h2>
+    <ul class="legend"><li><span class="swatch s-shopee-fin"></span>Comissão Shopee</li><li><span class="swatch s-vendas"></span>Vendas do bot</li></ul>
+  </div>
+  {%- set c = f.chart -%}
+  <svg class="chart" viewBox="0 0 {{ c.width }} {{ c.height }}" role="img" aria-label="Ganhos por dia no período">
+    {% for y, v in c.ticks %}
+      <line class="grid-line" x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ y }}" y2="{{ y }}"></line>
+      <text class="axis-label" x="{{ c.left - 6 }}" y="{{ y + 4 }}" text-anchor="end">R${{ v }}</text>
+    {% endfor %}
+    {% for bar in c.bars %}
+      <g class="bar-group">
+        <rect class="hit" x="{{ bar.x - 1 }}" y="0" width="{{ bar.w + 2 }}" height="{{ c.baseline }}"><title>{{ bar.label }}: {{ bar.total|brl }}{% for seg in bar.segs %} · {{ seg.label }} {{ seg.value|brl }}{% endfor %}</title></rect>
+        {% for seg in bar.segs %}<rect class="seg {{ 's-shopee-fin' if seg.key == 'shopee' else 's-vendas' }}" x="{{ bar.x }}" y="{{ seg.y }}" width="{{ bar.w }}" height="{{ seg.h }}" rx="2"><title>{{ bar.label }} · {{ seg.label }}: {{ seg.value|brl }}</title></rect>{% endfor %}
+        {% if bar.show_label %}<text class="axis-label" x="{{ bar.x + bar.w / 2 }}" y="{{ c.height - 6 }}" text-anchor="middle">{{ bar.label }}</text>{% endif %}
+      </g>
+    {% endfor %}
+    <line class="base-line" x1="{{ c.left }}" x2="{{ c.right }}" y1="{{ c.baseline }}" y2="{{ c.baseline }}"></line>
+  </svg>
+  <details class="table-view">
+    <summary>Ver em tabela</summary>
+    <div class="table-wrap"><table>
+      <thead><tr><th>Dia</th><th class="num">Comissão Shopee</th><th class="num">Vendas do bot</th><th class="num">Total</th></tr></thead>
+      <tbody>{% for bar in c.bars|reverse if bar.total %}
+        {%- set by = {} -%}{%- for seg in bar.segs %}{% set _ = by.update({seg.key: seg.value}) %}{% endfor -%}
+        <tr><td>{{ bar.label }}</td><td class="num">{{ by.get('shopee', 0)|brl }}</td><td class="num">{{ by.get('vendas', 0)|brl }}</td><td class="num"><b>{{ bar.total|brl }}</b></td></tr>
+      {% endfor %}</tbody>
+    </table></div>
+  </details>
+</section>
+{% endif %}
+
+<div class="grid-2-cards">
+  <section class="card">
+    <h2 class="mb-3">Produtos que mais renderam</h2>
+    {% if f.products %}
+    <div class="table-wrap"><table>
+      <thead><tr><th>Produto</th><th class="num">Unid.</th><th class="num">Comissão</th></tr></thead>
+      <tbody>{% for name, qty, value in f.products %}<tr><td>{{ name }}</td><td class="num">{{ qty }}</td><td class="num money"><b>{{ value|brl }}</b></td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="empty-chart">Nenhuma comissão no período.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2 class="mb-3">Mais divulgados pelos bots {{ help('Ofertas que os bots mais publicaram no período. Cliques por produto a Shopee não informa pela API: eles aparecem só no app da Shopee.') }}</h2>
+    {% if f.published %}
+    <div class="table-wrap"><table>
+      <thead><tr><th>Oferta</th><th>Loja</th><th class="num">Posts</th></tr></thead>
+      <tbody>{% for title, platform, n in f.published %}<tr><td>{{ title }}</td><td><span class="badge badge-store-{{ platform }}">{{ {'shopee': 'Shopee', 'amazon': 'Amazon', 'tiktok': 'TikTok Shop'}.get(platform, 'Mercado Livre') }}</span></td><td class="num">{{ n }}</td></tr>{% endfor %}</tbody>
+    </table></div>
+    {% else %}<p class="empty-chart">Nenhum post no período.</p>{% endif %}
+  </section>
+
+  <section class="card">
+    <h2 class="mb-3">Por loja</h2>
+    <ul class="store-list">
+      {% for st in f.stores %}
+      <li><span class="badge badge-store-{{ {'Shopee': 'shopee', 'Mercado Livre': 'mercadolivre', 'Amazon': 'amazon', 'TikTok Shop': 'tiktok'}[st.name] }}">{{ st.name }}</span>
+        <span class="name"></span>
+        {% if st.value is not none %}<span class="val money">{{ st.value|brl }}</span><span class="muted-inline">{{ st.orders }} pedido{{ 's' if st.orders != 1 }}</span>
+        {% elif st.connected %}<span class="muted-inline">conectada · a loja não envia o relatório de comissão pela API (veja no painel de afiliado dela)</span>
+        {% else %}<span class="muted-inline">não conectada</span>{% endif %}</li>
+      {% endfor %}
+    </ul>
+  </section>
+
+  {% if f.plans %}
+  <section class="card">
+    <h2 class="mb-3">Vendas do bot por plano</h2>
+    <ul class="store-list">{% for name, value in f.plans %}<li><span class="name">{{ name }}</span><span class="val money">{{ value|brl }}</span></li>{% endfor %}</ul>
+  </section>
+  {% endif %}
+</div>
+
+<p class="hint mt-3">{{ icon('info') }} Comissões: relatório de conversões da Shopee{% if report and report.available %}, atualizado {{ report.fetched_at|ago }}{% endif %}. A Shopee paga só a comissão dos pedidos concluídos. Vendas do bot: PIX aprovados no Mercado Pago.</p>
+{% endblock %}

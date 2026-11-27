@@ -37,7 +37,7 @@ async def lifespan(_app: FastAPI):
 
 
 app = FastAPI(
-    title="Telegram Vendas",
+    title=settings.app_name,
     lifespan=lifespan,
     docs_url=None if settings.is_production else "/docs",
     redoc_url=None,

@@ -69,6 +69,8 @@ class Settings:
     db_max_overflow: int = field(default_factory=lambda: _int("DB_MAX_OVERFLOW", 10))
 
     # Telegram
+    # Nome do produto exibido no painel, no login e no app instalado
+    app_name: str = field(default_factory=lambda: _str("APP_NAME", "Achadinho Pro"))
     telegram_bot_token: str = field(default_factory=lambda: _str("TELEGRAM_BOT_TOKEN"))
     telegram_bot_username: str = field(default_factory=lambda: _str("TELEGRAM_BOT_USERNAME").lstrip("@"))
     telegram_start_param: str = field(default_factory=lambda: _str("TELEGRAM_START_PARAM", "tiktok"))

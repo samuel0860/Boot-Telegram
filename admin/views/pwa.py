@@ -11,7 +11,7 @@ import json
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse, Response
 
-from config import BASE_DIR
+from config import BASE_DIR, settings
 
 router = APIRouter()
 
@@ -22,8 +22,8 @@ ASSETS = ["/static/css/admin.css", "/static/js/admin.js", "/static/pwa/offline.h
 THEME = "#0b0e14"
 
 MANIFEST = {
-    "name": "Telegram Vendas — Painel",
-    "short_name": "Painel Bots",
+    "name": settings.app_name,
+    "short_name": settings.app_name[:12],
     "description": "Painel do bot de vendas e dos bots de promoção.",
     "id": "/admin/",
     "start_url": "/admin/",

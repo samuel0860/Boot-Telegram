@@ -141,3 +141,18 @@ document.addEventListener("change", function (e) {
     });
   });
 })();
+
+// ---------------------------------------------------------------------------
+// Tema claro/escuro (o padrão é o claro; a escolha fica neste aparelho)
+// ---------------------------------------------------------------------------
+(function () {
+  "use strict";
+  var btn = document.getElementById("theme-toggle");
+  if (!btn) return;
+  btn.addEventListener("click", function () {
+    var dark = document.documentElement.getAttribute("data-theme") === "dark";
+    if (dark) document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", "dark");
+    try { localStorage.setItem("theme", dark ? "light" : "dark"); } catch (err) { /* ignora */ }
+  });
+})();

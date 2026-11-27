@@ -74,6 +74,7 @@ templates.env.filters["brl"] = lambda v: brl(v) if v is not None else "—"
 templates.env.filters["ago"] = _fmt_ago
 templates.env.filters["dt"] = _fmt_dt
 templates.env.globals["csrf_token"] = get_csrf_token
+templates.env.globals["app_name"] = settings.app_name
 
 
 # --------------------------------------------------------------------------- #
